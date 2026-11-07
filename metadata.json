@@ -1,0 +1,6 @@
+{
+  "name": "OPTIMATH LAB",
+  "description": "OPTIMATH LAB – Phòng thí nghiệm Toán học trực quan: Khám phá miền nghiệm, bất phương trình bậc nhất hai ẩn và tối ưu hóa cùng linh vật Opti.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
