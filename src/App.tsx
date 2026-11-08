@@ -24,6 +24,7 @@ export default function App() {
   const handleSelectModule = (modId: string) => {
     if (modId === 'home') {
       setCurrentView('home');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (modId === 'lab') {
       setLearningMode('guided');
       setCurrentView('lab');
@@ -76,7 +77,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-800">
+    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-800 pb-16 md:pb-0">
       {/* App Header */}
       <Header
         currentModule={currentView}

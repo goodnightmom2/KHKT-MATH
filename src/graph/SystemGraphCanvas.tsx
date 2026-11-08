@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Point2D, ShadingMode, SystemInequality, IntersectionPoint, SystemAnalysisResult } from '../types/math';
-import { getLineSegmentInBox, formatBoundaryLine } from '../math/mathEngine';
+import { getLineSegmentInBox } from '../math/mathEngine';
 import { formatPointCoord } from '../math/systemMathEngine';
-import { ZoomIn, ZoomOut, RotateCcw, Layers, MousePointer, Eye, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, MousePointer, Lock, Unlock } from 'lucide-react';
 
 interface SystemGraphCanvasProps {
   system: SystemInequality[];
@@ -65,6 +65,7 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panCenterStart, setPanCenterStart] = useState<Point2D>({ x: 0, y: 0 });
+  const [mobilePanLocked, setMobilePanLocked] = useState<boolean>(false);
   const pointerMovedRef = useRef<number>(0);
 
   // Resize observer
@@ -79,7 +80,7 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
         const targetHeight = isPresentationMode
           ? Math.max(480, Math.min(rect.width * 0.78, 650))
           : isMobile
-          ? Math.max(300, Math.min(rect.width * 0.75, 360))
+          ? Math.max(270, Math.min(rect.width * 0.75, 340))
           : Math.max(400, Math.min(rect.width * 0.65, 540));
 
         setDimensions({
@@ -214,7 +215,7 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
   const individualPolygons = useMemo(() => {
     if (!showIndividualFills) return [];
 
-    return system.map((ineq, idx) => {
+    return system.map((ineq) => {
       if (ineq.showFill === false) return null;
 
       let poly: Point2D[] = [
@@ -285,17 +286,19 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
     if (showPointM) {
       const mSvg = mathToSvg(pointM);
       const distToM = Math.hypot(mouseX - mSvg.x, mouseY - mSvg.y);
-      if (distToM <= 32) {
+      if (distToM <= 44) {
         setIsDraggingM(true);
         try { svg.setPointerCapture(e.pointerId); } catch {}
         return;
       }
     }
 
-    setIsPanning(true);
-    setPanStart({ x: e.clientX, y: e.clientY });
-    setPanCenterStart({ ...viewCenter });
-    try { svg.setPointerCapture(e.pointerId); } catch {}
+    if (!mobilePanLocked) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+      setPanCenterStart({ ...viewCenter });
+      try { svg.setPointerCapture(e.pointerId); } catch {}
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -309,7 +312,7 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
       pointerMovedRef.current += 1;
       const targetMath = svgToMath(mouseX, mouseY);
       onPointMChange(targetMath);
-    } else if (isPanning) {
+    } else if (isPanning && !mobilePanLocked) {
       const dx = (e.clientX - panStart.x) / scale;
       const dy = (e.clientY - panStart.y) / scale;
       pointerMovedRef.current += Math.hypot(e.clientX - panStart.x, e.clientY - panStart.y);
@@ -345,6 +348,16 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
     }
   };
 
+  // Nudge M from mobile bar
+  const nudgePointM = (dx: number, dy: number) => {
+    if (!onPointMChange) return;
+    const roundCoord = (v: number) => Math.round(v * 10) / 10;
+    onPointMChange({
+      x: roundCoord(pointM.x + dx),
+      y: roundCoord(pointM.y + dy)
+    });
+  };
+
   // Zoom controls
   const handleZoomIn = () => setScale(s => Math.min(80, s * 1.25));
   const handleZoomOut = () => setScale(s => Math.max(16, s / 1.25));
@@ -371,11 +384,11 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
   return (
     <div className={`relative flex flex-col w-full select-none ${className}`}>
       {/* Top Floating Controls Bar */}
-      <div className="flex items-center justify-between pb-1.5 px-0.5 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="font-extrabold text-slate-800 flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            Hệ Trục Tọa Độ Oxy ({system.length} Ràng Buộc)
+      <div className="flex items-center justify-between pb-1.5 px-0.5 text-xs gap-1">
+        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+          <span className="font-extrabold text-slate-800 flex items-center gap-1.5 text-[11px] sm:text-xs">
+            <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span>Oxy ({system.length} BPT)</span>
           </span>
           {analysis.regionType === 'empty' && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
@@ -389,12 +402,24 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
           )}
           {analysis.regionType === 'bounded_polygon' && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-              Đa giác bị chặn ({analysis.orderedPolygon.length} đỉnh)
+              Đa giác ({analysis.orderedPolygon.length} đỉnh)
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobilePanLocked(v => !v)}
+            className={`sm:hidden flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
+              mobilePanLocked
+                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                : 'bg-white border-slate-200 text-slate-600'
+            }`}
+          >
+            {mobilePanLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+            <span>{mobilePanLocked ? 'Đã khóa khung' : 'Khóa khung'}</span>
+          </button>
           <button
             type="button"
             onClick={handleZoomIn}
@@ -425,7 +450,9 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
       {/* SVG Canvas Container */}
       <div
         ref={containerRef}
-        className="w-full relative rounded-2xl overflow-hidden border border-slate-300 bg-white shadow-xs touch-none cursor-crosshair"
+        className={`w-full relative rounded-2xl overflow-hidden border border-slate-300 bg-white shadow-xs ${
+          mobilePanLocked ? 'touch-pan-y' : 'touch-none'
+        } cursor-crosshair`}
       >
         <svg
           ref={svgRef}
@@ -653,12 +680,12 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
                 style={{ animationDuration: '2.5s' }}
               />
               <circle
-                r="12"
+                r="13"
                 fill={pointMStatus.satisfiesAll ? '#10B981' : '#EF4444'}
                 fillOpacity="0.35"
               />
               <circle
-                r="7"
+                r="8"
                 fill={pointMStatus.satisfiesAll ? '#10B981' : '#EF4444'}
                 stroke="#FFFFFF"
                 strokeWidth="2.5"
@@ -689,11 +716,110 @@ export const SystemGraphCanvas: React.FC<SystemGraphCanvasProps> = ({
           )}
         </svg>
 
-        {/* Legend bar inside graph */}
-        <div className="absolute bottom-2 left-2 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-sm border border-slate-200 text-[11px] text-slate-700 shadow-xs">
+        {/* Legend bar inside graph (Desktop/Tablet) */}
+        <div className="hidden sm:flex absolute bottom-2 left-2 pointer-events-none items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-sm border border-slate-200 text-[11px] text-slate-700 shadow-xs">
           <MousePointer className="w-3.5 h-3.5 text-blue-600" />
           <span>Kéo điểm M hoặc bấm lên hệ trục để kiểm tra nghiệm của hệ</span>
         </div>
+
+        {/* Mobile Touch Helper Bar for Point M */}
+        {showPointM && onPointMChange && (
+          <div className="sm:hidden border-t border-slate-200 bg-slate-50/95 px-2.5 py-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-extrabold text-slate-800 font-mono">
+                  Điểm thử M({pointM.x}; {pointM.y})
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    pointMStatus.satisfiesAll
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-rose-100 text-rose-800'
+                  }`}
+                >
+                  {pointMStatus.satisfiesAll ? 'Thỏa cả hệ ✓' : 'Vi phạm ✗'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onPointMChange({ x: 0, y: 0 })}
+                className="px-2 py-1 rounded-lg bg-white border border-slate-300 text-[10px] font-bold text-slate-700 active:bg-slate-100"
+              >
+                Về O(0; 0)
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-1.5 py-1">
+                <span className="text-[10px] font-extrabold text-slate-500 px-1">Trục X</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(-1, 0)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                  >
+                    -1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(-0.5, 0)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                  >
+                    -.5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(0.5, 0)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                  >
+                    +.5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(1, 0)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                  >
+                    +1
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-1.5 py-1">
+                <span className="text-[10px] font-extrabold text-slate-500 px-1">Trục Y</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(0, -1)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                  >
+                    -1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(0, -0.5)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                  >
+                    -.5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(0, 0.5)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                  >
+                    +.5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgePointM(0, 1)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 active:bg-emerald-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                  >
+                    +1
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

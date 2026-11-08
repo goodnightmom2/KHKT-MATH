@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Inequality, Point2D, ShadingMode } from '../types/math';
 import { getHalfPlanePolygon, getLineSegmentInBox, formatBoundaryLine, checkPointInequality } from '../math/mathEngine';
-import { ZoomIn, ZoomOut, RotateCcw, MousePointer, Layers, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, MousePointer, Lock, Unlock, Crosshair } from 'lucide-react';
 
 interface GraphCanvasProps {
   inequality: Inequality;
@@ -81,8 +81,17 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panCenterStart, setPanCenterStart] = useState<Point2D>({ x: 0, y: 0 });
   const [hoverCoord, setHoverCoord] = useState<Point2D | null>(null);
+  const [mobilePanLocked, setMobilePanLocked] = useState<boolean>(false);
+  const [mobileEditTarget, setMobileEditTarget] = useState<'A' | 'B'>('A');
 
   const pointerMovedRef = useRef<number>(0);
+
+  // Sync mobileEditTarget with activePointTarget when provided
+  useEffect(() => {
+    if (activePointTarget === 'A' || activePointTarget === 'B') {
+      setMobileEditTarget(activePointTarget);
+    }
+  }, [activePointTarget]);
 
   // Resize observer
   useEffect(() => {
@@ -96,7 +105,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         const targetHeight = isPresentationMode
           ? Math.max(460, Math.min(rect.width * 0.75, 620))
           : isMobile
-          ? Math.max(280, Math.min(rect.width * 0.72, 340))
+          ? Math.max(260, Math.min(rect.width * 0.75, 330))
           : Math.max(380, Math.min(rect.width * 0.65, 520));
 
         setDimensions({
@@ -199,27 +208,32 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Check Point A (generous 32px hit radius for mobile touch)
-    if (showPointsAB && aSvg && Math.hypot(mouseX - aSvg.x, mouseY - aSvg.y) <= 32) {
+    // Generous 44px hit radius for mobile touch
+    const hitRadius = 44;
+
+    // Check Point A
+    if (showPointsAB && aSvg && Math.hypot(mouseX - aSvg.x, mouseY - aSvg.y) <= hitRadius) {
       setIsDraggingA(true);
+      setMobileEditTarget('A');
       try {
         svg.setPointerCapture(e.pointerId);
       } catch {}
       return;
     }
 
-    // Check Point B (generous 32px hit radius for mobile touch)
-    if (showPointsAB && bSvg && Math.hypot(mouseX - bSvg.x, mouseY - bSvg.y) <= 32) {
+    // Check Point B
+    if (showPointsAB && bSvg && Math.hypot(mouseX - bSvg.x, mouseY - bSvg.y) <= hitRadius) {
       setIsDraggingB(true);
+      setMobileEditTarget('B');
       try {
         svg.setPointerCapture(e.pointerId);
       } catch {}
       return;
     }
 
-    // Check Point M (generous 32px hit radius for mobile touch)
+    // Check Point M
     const distToM = Math.hypot(mouseX - mSvg.x, mouseY - mSvg.y);
-    if (showPointM && distToM <= 32) {
+    if (showPointM && distToM <= hitRadius) {
       setIsDraggingM(true);
       try {
         svg.setPointerCapture(e.pointerId);
@@ -227,13 +241,15 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       return;
     }
 
-    // Start canvas pan
-    setIsPanning(true);
-    setPanStart({ x: e.clientX, y: e.clientY });
-    setPanCenterStart({ ...viewCenter });
-    try {
-      svg.setPointerCapture(e.pointerId);
-    } catch {}
+    // Start canvas pan (if not pan-locked on mobile)
+    if (!mobilePanLocked) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+      setPanCenterStart({ ...viewCenter });
+      try {
+        svg.setPointerCapture(e.pointerId);
+      } catch {}
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -255,7 +271,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     } else if (isDraggingM) {
       pointerMovedRef.current += 1;
       onPointChange?.(currentMath);
-    } else if (isPanning) {
+    } else if (isPanning && !mobilePanLocked) {
       const dx = (e.clientX - panStart.x) / scale;
       const dy = (e.clientY - panStart.y) / scale;
       pointerMovedRef.current += Math.hypot(e.clientX - panStart.x, e.clientY - panStart.y);
@@ -313,11 +329,12 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
     // Direct click placement for Point A or B in Step 3
     if (showPointsAB) {
-      if (activePointTarget === 'A' && onPointAChange) {
+      const target = activePointTarget === 'A' || activePointTarget === 'B' ? activePointTarget : mobileEditTarget;
+      if (target === 'A' && onPointAChange) {
         onPointAChange(targetMath);
         return;
       }
-      if (activePointTarget === 'B' && onPointBChange) {
+      if (target === 'B' && onPointBChange) {
         onPointBChange(targetMath);
         return;
       }
@@ -326,6 +343,23 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     // Default mode: Move test point M
     if (onPointChange) {
       onPointChange(targetMath);
+    }
+  };
+
+  // Helper to nudge coordinates from mobile buttons
+  const nudgeActivePoint = (dx: number, dy: number) => {
+    const roundCoord = (v: number) => Math.round(v * 10) / 10;
+    if (showPointsAB) {
+      const target = activePointTarget === 'A' || activePointTarget === 'B' ? activePointTarget : mobileEditTarget;
+      if (target === 'A' && pointA && onPointAChange) {
+        onPointAChange({ x: roundCoord(pointA.x + dx), y: roundCoord(pointA.y + dy) });
+      } else if (target === 'B' && pointB && onPointBChange) {
+        onPointBChange({ x: roundCoord(pointB.x + dx), y: roundCoord(pointB.y + dy) });
+      }
+      return;
+    }
+    if (showPointM && onPointChange) {
+      onPointChange({ x: roundCoord(pointM.x + dx), y: roundCoord(pointM.y + dy) });
     }
   };
 
@@ -358,37 +392,51 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       className={`relative w-full rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-sm flex flex-col ${className}`}
     >
       {/* Top Bar with Status and Quick Controls */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50/80 text-xs text-slate-600">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
-            Hệ trục Oxy
+      <div className="flex items-center justify-between px-2.5 sm:px-3 py-2 border-b border-slate-100 bg-slate-50/80 text-xs text-slate-600 gap-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-semibold text-slate-700 flex items-center gap-1 shrink-0">
+            <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-blue-500 inline-block" />
+            <span>Oxy</span>
           </span>
-          <span className="text-slate-400">|</span>
-          <span className="font-mono text-slate-500">
+          <span className="text-slate-300">|</span>
+          <span className="font-mono text-[11px] sm:text-xs text-slate-500 truncate">
             {enableHalfPlaneClick ? (
               <span className="text-amber-600 font-semibold animate-pulse">
-                Chạm vào nửa mặt phẳng để chọn miền nghiệm
+                Chạm chọn miền nghiệm
               </span>
             ) : showShading ? (
               shadingMode === 'solution' ? (
                 <span className="text-blue-600 font-semibold">Tô sáng: Miền nghiệm</span>
               ) : (
-                <span className="text-slate-600 font-semibold">Gạch chéo: Miền loại bỏ (SGK)</span>
+                <span className="text-slate-600 font-semibold">Gạch bỏ: Miền sai (SGK)</span>
               )
             ) : (
-              <span className="text-purple-600 font-semibold">Chưa tô màu (Quy trình 7 bước)</span>
+              <span className="text-purple-600 font-semibold">Chưa tô miền</span>
             )}
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           {hoverCoord && (
             <span className="font-mono text-[11px] text-slate-500 px-2 py-0.5 rounded bg-white border border-slate-200 mr-1 hidden sm:inline-block">
               x: {hoverCoord.x}, y: {hoverCoord.y}
             </span>
           )}
           <button
+            type="button"
+            onClick={() => setMobilePanLocked(v => !v)}
+            className={`sm:hidden flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border transition ${
+              mobilePanLocked
+                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                : 'bg-white border-slate-200 text-slate-600'
+            }`}
+            title="Khóa kéo khung đồ thị để dễ cuộn trang trên điện thoại"
+          >
+            {mobilePanLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+            <span>{mobilePanLocked ? 'Đã khóa khung' : 'Khóa khung'}</span>
+          </button>
+          <button
+            type="button"
             onClick={handleZoomIn}
             className="p-1.5 rounded-md hover:bg-slate-200 text-slate-700 transition"
             title="Phóng to"
@@ -396,6 +444,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={handleZoomOut}
             className="p-1.5 rounded-md hover:bg-slate-200 text-slate-700 transition"
             title="Thu nhỏ"
@@ -403,6 +452,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={handleResetView}
             className="p-1.5 rounded-md hover:bg-slate-200 text-slate-700 transition"
             title="Đặt lại khung nhìn"
@@ -413,7 +463,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       </div>
 
       {/* SVG Coordinate Graph Area */}
-      <div className="relative w-full flex-1 touch-none cursor-crosshair">
+      <div className={`relative w-full flex-1 ${mobilePanLocked ? 'touch-pan-y' : 'touch-none'} cursor-crosshair`}>
         <svg
           ref={svgRef}
           width={dimensions.width}
@@ -729,8 +779,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               className="point-a cursor-grab active:cursor-grabbing"
               transform={`translate(${aSvg.x}, ${aSvg.y})`}
             >
-              <circle r="14" fill="#8B5CF6" fillOpacity="0.25" className="animate-pulse" />
-              <circle r="7" fill="#8B5CF6" stroke="#FFFFFF" strokeWidth="2.5" />
+              <circle r="16" fill="#8B5CF6" fillOpacity="0.25" className="animate-pulse" />
+              <circle r="8" fill="#8B5CF6" stroke="#FFFFFF" strokeWidth="2.5" />
               <g transform="translate(10, -18)">
                 <rect x="0" y="0" width="76" height="22" rx="5" fill="#5B21B6" fillOpacity="0.9" />
                 <text x="38" y="15" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#FFFFFF" className="font-mono">
@@ -745,8 +795,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               className="point-b cursor-grab active:cursor-grabbing"
               transform={`translate(${bSvg.x}, ${bSvg.y})`}
             >
-              <circle r="14" fill="#4F46E5" fillOpacity="0.25" className="animate-pulse" />
-              <circle r="7" fill="#4F46E5" stroke="#FFFFFF" strokeWidth="2.5" />
+              <circle r="16" fill="#4F46E5" fillOpacity="0.25" className="animate-pulse" />
+              <circle r="8" fill="#4F46E5" stroke="#FFFFFF" strokeWidth="2.5" />
               <g transform="translate(10, -18)">
                 <rect x="0" y="0" width="76" height="22" rx="5" fill="#312E81" fillOpacity="0.9" />
                 <text x="38" y="15" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#FFFFFF" className="font-mono">
@@ -806,12 +856,12 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
                   style={{ animationDuration: '2.5s' }}
                 />
                 <circle
-                  r="12"
+                  r="13"
                   fill={markerColor}
                   fillOpacity="0.3"
                 />
                 <circle
-                  r="7"
+                  r="8"
                   fill={markerColor}
                   stroke="#FFFFFF"
                   strokeWidth="2.5"
@@ -843,8 +893,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           })()}
         </svg>
 
-        {/* Floating guidance overlay */}
-        <div className="absolute bottom-2 left-2 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 backdrop-blur-sm border border-slate-200 text-[11px] text-slate-600 shadow-sm">
+        {/* Floating guidance overlay (Desktop/Tablet) */}
+        <div className="hidden sm:flex absolute bottom-2 left-2 pointer-events-none items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 backdrop-blur-sm border border-slate-200 text-[11px] text-slate-600 shadow-sm">
           <MousePointer className="w-3.5 h-3.5 text-blue-500" />
           <span>
             {enableHalfPlaneClick
@@ -857,15 +907,190 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
         {/* Boundary Line equation tag */}
         {showBoundaryLine && (
-          <div className="absolute top-2 left-2 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-xs font-semibold shadow-sm flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-600" />
-            <span>Đường thẳng bờ (d): <strong>{formatBoundaryLine(inequality.a, inequality.b, inequality.c)}</strong></span>
-            <span className="text-[10px] text-blue-600 font-normal">
-              ({effectiveLineStyle === 'solid' ? 'Nét liền – Lấy bờ' : 'Nét đứt – Không lấy bờ'})
+          <div className="absolute top-2 left-2 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-blue-50/95 border border-blue-200 text-blue-800 text-[10px] sm:text-xs font-semibold shadow-sm flex items-center gap-1 sm:gap-1.5 max-w-[94%]">
+            <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+            <span className="truncate">
+              (d): <strong>{formatBoundaryLine(inequality.a, inequality.b, inequality.c)}</strong>
+            </span>
+            <span className="text-[9px] sm:text-[10px] text-blue-600 font-normal shrink-0">
+              ({effectiveLineStyle === 'solid' ? 'Nét liền' : 'Nét đứt'})
             </span>
           </div>
         )}
       </div>
+
+      {/* Mobile Touch Helper Bar (Shown on phones < 640px for effortless precision) */}
+      {(showPointM || showPointsAB || enableHalfPlaneClick) && (
+        <div className="sm:hidden border-t border-slate-200 bg-slate-50/95 px-2.5 py-2 space-y-2">
+          {enableHalfPlaneClick && (
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-bold text-amber-800 flex items-center gap-1">
+                <Crosshair className="w-3.5 h-3.5 text-amber-600" />
+                <span>Chọn nhanh nửa mặt phẳng trên điện thoại:</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onSelectHalfPlane?.('with_test', pointM)}
+                  className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
+                    selectedHalfPlaneSide === 'with_test'
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Miền CHỨA M({pointM.x}; {pointM.y})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectHalfPlane?.('without_test', { x: -pointM.x, y: -pointM.y })}
+                  className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
+                    selectedHalfPlaneSide === 'without_test'
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Miền KHÔNG chứa M
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(showPointsAB || showPointM) && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-1">
+                {showPointsAB ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMobileEditTarget('A')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                        (activePointTarget || mobileEditTarget) === 'A'
+                          ? 'bg-purple-600 text-white border-purple-700'
+                          : 'bg-white text-purple-700 border-purple-200'
+                      }`}
+                    >
+                      Chỉnh A({pointA?.x ?? 0}; {pointA?.y ?? 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMobileEditTarget('B')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                        (activePointTarget || mobileEditTarget) === 'B'
+                          ? 'bg-indigo-600 text-white border-indigo-700'
+                          : 'bg-white text-indigo-700 border-indigo-200'
+                      }`}
+                    >
+                      Chỉnh B({pointB?.x ?? 0}; {pointB?.y ?? 0})
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-extrabold text-slate-800 font-mono">
+                      Điểm thử M({pointM.x}; {pointM.y})
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                        mStatus.satisfies
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {mStatus.satisfies ? 'Thỏa mãn' : 'Không thỏa'}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showPointsAB) {
+                      const target = activePointTarget === 'A' || activePointTarget === 'B' ? activePointTarget : mobileEditTarget;
+                      if (target === 'A') onPointAChange?.({ x: 0, y: 0 });
+                      else onPointBChange?.({ x: 0, y: 0 });
+                    } else {
+                      onPointChange?.({ x: 0, y: 0 });
+                    }
+                  }}
+                  className="px-2 py-1 rounded-lg bg-white border border-slate-300 text-[10px] font-bold text-slate-700 active:bg-slate-100"
+                >
+                  Về (0; 0)
+                </button>
+              </div>
+
+              {/* Fine-tune X and Y buttons for mobile fingers */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-1.5 py-1">
+                  <span className="text-[10px] font-extrabold text-slate-500 px-1">Trục X</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(-1, 0)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                    >
+                      -1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(-0.5, 0)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                    >
+                      -.5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(0.5, 0)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                    >
+                      +.5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(1, 0)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                    >
+                      +1
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-1.5 py-1">
+                  <span className="text-[10px] font-extrabold text-slate-500 px-1">Trục Y</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(0, -1)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                    >
+                      -1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(0, -0.5)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                    >
+                      -.5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(0, 0.5)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center"
+                    >
+                      +.5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nudgeActivePoint(0, 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-100 active:bg-blue-100 text-slate-800 font-mono text-[11px] font-bold flex items-center justify-center"
+                    >
+                      +1
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

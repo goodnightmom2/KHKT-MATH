@@ -264,8 +264,133 @@ export const VertexObjectiveTable: React.FC<VertexObjectiveTableProps> = ({
               Hệ bất phương trình không có đỉnh khả thi (Miền nghiệm rỗng ∅).
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+            <>
+              {/* Mobile Card View for Students on Phones (< 768px) */}
+              <div className="md:hidden flex flex-col gap-2.5">
+                {vertexEvaluations.map(ve => {
+                  const check = verifiedVertices[ve.label];
+                  const isRowVerified = check?.isCorrect || showSolution;
+                  const showOptimalHighlight = allVerticesVerified && ve.isOptimal;
+                  const unverifiedPrompt = `${objective.cx} × (${formatCoord(
+                    ve.vertex.x
+                  )}) + ${objective.cy} × (${formatCoord(ve.vertex.y)}) = ?`;
+
+                  return (
+                    <div
+                      key={ve.label}
+                      onClick={() => onHighlightVertex?.(ve.vertex)}
+                      className={`p-3 rounded-xl border transition ${
+                        showOptimalHighlight
+                          ? 'border-purple-400 bg-purple-50/80 ring-1 ring-purple-300'
+                          : isRowVerified
+                          ? 'border-emerald-200 bg-emerald-50/40'
+                          : 'border-slate-200 bg-slate-50/70'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center justify-center w-6 h-6 rounded-md font-mono text-xs font-bold ${
+                              showOptimalHighlight
+                                ? 'bg-purple-600 text-white'
+                                : ve.isStrictlyExcluded
+                                ? 'bg-rose-100 text-rose-700 border border-rose-300'
+                                : 'bg-white border border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            {ve.label}
+                          </span>
+                          <span className="font-mono font-extrabold text-xs text-slate-900">
+                            {formatPointCoord(ve.vertex)}
+                          </span>
+                          {ve.isStrictlyExcluded && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">
+                              Biên mở (Loại)
+                            </span>
+                          )}
+                        </div>
+
+                        {showOptimalHighlight ? (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              onSelectKValue?.(ve.value);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-600 text-white font-extrabold text-[10px] shadow-2xs"
+                          >
+                            <Award className="w-3 h-3" />
+                            <span>{objective.goal === 'max' ? 'GTLN (Tối ưu)' : 'GTNN (Tối ưu)'}</span>
+                          </button>
+                        ) : isRowVerified ? (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              onSelectKValue?.(ve.value);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>F = {formatValueWithApprox(ve.value)}</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-mono">Chưa tính</span>
+                        )}
+                      </div>
+
+                      <div className="text-[11px] font-mono text-slate-700 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80 mb-2">
+                        {isRowVerified ? (
+                          <span className="text-slate-900 font-semibold">{ve.substitutionText}</span>
+                        ) : (
+                          <span className="text-slate-600">Thay số: {unverifiedPrompt}</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={studentInputs[ve.label] || ''}
+                          placeholder="Nhập giá trị F (VD: 560/3)"
+                          onChange={e =>
+                            setStudentInputs(prev => ({
+                              ...prev,
+                              [ve.label]: e.target.value
+                            }))
+                          }
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleCheckVertex(ve);
+                          }}
+                          className={`flex-1 min-h-[38px] px-2.5 py-1.5 font-mono font-bold text-xs border rounded-lg focus:ring-2 focus:ring-purple-500 ${
+                            check
+                              ? check.isCorrect
+                                ? 'border-emerald-400 bg-emerald-50/50 text-emerald-900'
+                                : 'border-rose-400 bg-rose-50/50 text-rose-900'
+                              : 'border-slate-300 bg-white text-slate-900'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleCheckVertex(ve)}
+                          className="px-3.5 py-2 min-h-[38px] bg-purple-600 active:bg-purple-700 text-white font-bold text-xs rounded-lg transition shrink-0 cursor-pointer"
+                        >
+                          Kiểm chứng
+                        </button>
+                      </div>
+
+                      {check && !check.isCorrect && (
+                        <div className="mt-1.5 text-[11px] text-rose-600 font-medium">
+                          {check.message}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop / Tablet Table View (>= 768px) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 text-[11px]">
                     <th className="py-2.5 px-3 font-bold">Đỉnh</th>
@@ -407,7 +532,8 @@ export const VertexObjectiveTable: React.FC<VertexObjectiveTableProps> = ({
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       )}

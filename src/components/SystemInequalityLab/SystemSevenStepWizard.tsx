@@ -499,6 +499,29 @@ Các đỉnh của miền nghiệm: ${
             );
           })}
         </div>
+
+        {/* Mobile / Tablet Quick SGK Presets Bar */}
+        <div className="xl:hidden mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">
+            5 Ca mẫu SGK:
+          </span>
+          {[
+            { id: 'preset-1', name: 'Bài 1: Tứ giác SGK' },
+            { id: 'preset-2', name: 'Bài 2: Miền rỗng (∅)' },
+            { id: 'preset-3', name: 'Bài 3: Miền mở' },
+            { id: 'preset-4', name: 'Bài 4: Biên đứt' },
+            { id: 'preset-5', name: 'Bài 5: Suy biến đoạn' }
+          ].map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onSelectPreset(p.id)}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-slate-200 bg-slate-50 hover:bg-blue-50 text-slate-700 whitespace-nowrap shrink-0 transition cursor-pointer"
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 2. COMPACT OPTI ASSISTANT BANNER */}
@@ -905,18 +928,18 @@ Các đỉnh của miền nghiệm: ${
                         </div>
 
                         {/* Line Equations */}
-                        <div className="text-[11px] text-slate-500 font-mono mt-1 pl-7">
+                        <div className="text-[11px] text-slate-500 font-mono mt-1 pl-0 sm:pl-7">
                           {inter.lineEquations ? `${inter.lineEquations[0]}  và  ${inter.lineEquations[1]}` : ''}
                         </div>
 
                         {/* Interactive Calculation form when selected or unsolved */}
                         {isSelected && !calc.isSolved && (
-                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col gap-2.5 pl-7">
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col gap-2.5 pl-0 sm:pl-7">
                             <div className="text-[11px] text-slate-700 font-medium">
                               Nhập tọa độ giao điểm (hỗ trợ số thập phân hoặc phân số như 5/2):
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                               <div className="flex items-center gap-1.5">
                                 <label className="font-mono font-bold text-xs text-slate-600">x =</label>
                                 <input
@@ -929,7 +952,7 @@ Các đỉnh của miền nghiệm: ${
                                       [inter.id]: { ...(prev[inter.id] || calc), inputX: e.target.value }
                                     }))
                                   }
-                                  className="w-20 px-2 py-1 text-center font-bold text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  className="w-20 min-h-[38px] px-2 py-1 text-center font-bold text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
                                 />
                               </div>
 
@@ -945,14 +968,14 @@ Các đỉnh của miền nghiệm: ${
                                       [inter.id]: { ...(prev[inter.id] || calc), inputY: e.target.value }
                                     }))
                                   }
-                                  className="w-20 px-2 py-1 text-center font-bold text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  className="w-20 min-h-[38px] px-2 py-1 text-center font-bold text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
                                 />
                               </div>
 
                               <button
                                 type="button"
                                 onClick={() => handleCheckCoordinate(inter.id)}
-                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer"
+                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer min-h-[38px]"
                               >
                                 Kiểm tra
                               </button>

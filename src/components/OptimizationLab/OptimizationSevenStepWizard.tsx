@@ -79,7 +79,7 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
   // Mobile viewport view mode for screens < xl ('step' | 'graph' | 'table' | 'all')
-  const [mobileStepView, setMobileStepView] = useState<'step' | 'graph' | 'table' | 'all'>('step');
+  const [mobileStepView, setMobileStepView] = useState<'step' | 'graph' | 'table' | 'all'>('all');
 
   const { objective, system, variables } = scenario;
   const { vertexEvaluations, optimalPoints, optimalValue, integerOptimalPoint, integerOptimalValue } = result;
@@ -384,6 +384,33 @@ ${result.practicalAnswer}`;
               </button>
             );
           })}
+        </div>
+
+        {/* Mobile / Tablet Quick Real-World Scenarios Bar */}
+        <div className="xl:hidden mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">
+            5 Bài toán:
+          </span>
+          {[
+            { id: 'scenario-1', name: 'Bài 1: Sản xuất A & B' },
+            { id: 'scenario-2', name: 'Bài 2: Ôn thi Toán - Anh' },
+            { id: 'scenario-3', name: 'Bài 3: Phối trộn thức ăn' },
+            { id: 'scenario-4', name: 'Bài 4: Thuê xe vận tải' },
+            { id: 'scenario-5', name: 'Bài 5: Nông trại trồng cây' }
+          ].map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onSelectScenario(s.id)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap shrink-0 transition cursor-pointer ${
+                scenario.id === s.id
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-purple-50'
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
         </div>
       </div>
 

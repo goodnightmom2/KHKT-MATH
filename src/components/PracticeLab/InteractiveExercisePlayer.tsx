@@ -325,10 +325,63 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
         </div>
       </div>
 
+      {/* Mobile-First Problem Statement & Step Progress Card (Shown at top on phones < 1024px) */}
+      <div className="lg:hidden bg-white rounded-2xl border border-indigo-200/80 p-3.5 sm:p-4 space-y-2.5 shadow-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-extrabold text-indigo-700 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-indigo-600" />
+            Đề bài Toán học
+          </span>
+          <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-bold font-mono tabular-nums">
+            Bước {currentStepIdx + 1}/{exercise.steps.length}
+          </span>
+        </div>
+
+        <p className="text-xs sm:text-sm text-slate-800 leading-relaxed whitespace-pre-line font-medium">
+          {exercise.questionText}
+        </p>
+
+        {/* Step Progress Tabs on Mobile */}
+        <div className="pt-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {exercise.steps.map((st, idx) => {
+            const isDone = completedSteps.has(st.stepIndex);
+            const isCurrent = idx === currentStepIdx;
+            const crit = exercise.rubric.criteria.find(c => c.stepIndex === st.stepIndex);
+            return (
+              <button
+                key={st.stepIndex}
+                type="button"
+                onClick={() => goToStep(idx)}
+                className={`flex-1 min-w-[84px] py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between gap-1 cursor-pointer ${
+                  isCurrent
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : isDone
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                <span className="whitespace-nowrap">Bước {st.stepIndex}</span>
+                <span className="font-mono text-[10px] opacity-90">
+                  {isDone ? '✓' : `${crit?.points || 5}đ`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Main Two-Zone Split Layout: Left Interactive Graph + Right Step-by-Step Assessment */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
         {/* LEFT COLUMN (7 cols): Interactive Graph Engine Stage */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4">
+        <div
+          className={`lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 space-y-3 sm:space-y-4 ${
+            activeStep.inputType === 'canvas_boundary' ||
+            activeStep.inputType === 'canvas_drag_point' ||
+            activeStep.inputType === 'canvas_half_plane'
+              ? 'order-1 lg:order-1'
+              : 'order-2 lg:order-1'
+          }`}
+        >
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
@@ -455,9 +508,17 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
         </div>
 
         {/* RIGHT COLUMN (5 cols): Question, Step-by-Step Grader & Socratic Opti */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Problem Statement Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3">
+        <div
+          className={`lg:col-span-5 space-y-4 ${
+            activeStep.inputType === 'canvas_boundary' ||
+            activeStep.inputType === 'canvas_drag_point' ||
+            activeStep.inputType === 'canvas_half_plane'
+              ? 'order-2 lg:order-2'
+              : 'order-1 lg:order-2'
+          }`}
+        >
+          {/* Problem Statement Card (Desktop >= 1024px) */}
+          <div className="hidden lg:block bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-indigo-700">Đề bài Toán học</span>
               <span className="text-xs text-slate-500 font-mono tabular-nums">
@@ -586,29 +647,119 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
             )}
 
             {activeStep.inputType === 'canvas_drag_point' && (
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
-                <span className="text-slate-700 font-medium">
-                  Tọa độ điểm M hiện tại trên đồ thị:
-                </span>
-                <span className="font-mono font-bold text-indigo-700 text-sm">
-                  M{formatPointCoord(canvasPointM)}
-                </span>
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-700 font-medium">
+                    Tọa độ điểm M hiện tại trên đồ thị:
+                  </span>
+                  <span className="font-mono font-bold text-indigo-700 text-sm">
+                    M{formatPointCoord(canvasPointM)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/70">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-slate-600">x =</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={canvasPointM.x}
+                      onChange={e =>
+                        setCanvasPointM(prev => ({
+                          ...prev,
+                          x: parseFloat(e.target.value) || 0
+                        }))
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-slate-600">y =</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={canvasPointM.y}
+                      onChange={e =>
+                        setCanvasPointM(prev => ({
+                          ...prev,
+                          y: parseFloat(e.target.value) || 0
+                        }))
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-xs"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
             {activeStep.inputType === 'canvas_boundary' && (
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-slate-500 block">Điểm A trên đồ thị:</span>
-                  <span className="font-mono font-bold text-blue-700">
-                    A{formatPointCoord(canvasPointA)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Điểm B trên đồ thị:</span>
-                  <span className="font-mono font-bold text-indigo-700">
-                    B{formatPointCoord(canvasPointB)}
-                  </span>
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 rounded-lg bg-white border border-slate-200 space-y-1.5">
+                    <span className="text-blue-700 font-bold block">
+                      Điểm A{formatPointCoord(canvasPointA)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-[11px] text-slate-500">x:</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={canvasPointA.x}
+                        onChange={e =>
+                          setCanvasPointA(prev => ({
+                            ...prev,
+                            x: parseFloat(e.target.value) || 0
+                          }))
+                        }
+                        className="w-full px-1.5 py-1 rounded border border-slate-300 font-mono text-xs font-bold"
+                      />
+                      <span className="font-mono text-[11px] text-slate-500">y:</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={canvasPointA.y}
+                        onChange={e =>
+                          setCanvasPointA(prev => ({
+                            ...prev,
+                            y: parseFloat(e.target.value) || 0
+                          }))
+                        }
+                        className="w-full px-1.5 py-1 rounded border border-slate-300 font-mono text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white border border-slate-200 space-y-1.5">
+                    <span className="text-indigo-700 font-bold block">
+                      Điểm B{formatPointCoord(canvasPointB)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-[11px] text-slate-500">x:</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={canvasPointB.x}
+                        onChange={e =>
+                          setCanvasPointB(prev => ({
+                            ...prev,
+                            x: parseFloat(e.target.value) || 0
+                          }))
+                        }
+                        className="w-full px-1.5 py-1 rounded border border-slate-300 font-mono text-xs font-bold"
+                      />
+                      <span className="font-mono text-[11px] text-slate-500">y:</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={canvasPointB.y}
+                        onChange={e =>
+                          setCanvasPointB(prev => ({
+                            ...prev,
+                            y: parseFloat(e.target.value) || 0
+                          }))
+                        }
+                        className="w-full px-1.5 py-1 rounded border border-slate-300 font-mono text-xs font-bold"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

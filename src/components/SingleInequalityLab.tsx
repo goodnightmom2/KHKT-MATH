@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { ComparisonOperator, Inequality, LearningMode, OptiExpression, Point2D, ShadingMode } from '../types/math';
+import React, { useState, useMemo } from 'react';
+import { Inequality, LearningMode, OptiExpression, Point2D, ShadingMode } from '../types/math';
 import { evaluatePointWithSteps, formatBoundaryLine, formatInequality } from '../math/mathEngine';
 import { OptiActionState } from '../mascot/OptiMascot';
 import { GraphCanvas } from '../graph/GraphCanvas';
@@ -7,7 +7,7 @@ import { ControlPanel } from './ControlPanel';
 import { ExplanationPanel } from './ExplanationPanel';
 import { OptiDialogue } from '../mascot/OptiDialogue';
 import { SevenStepWizard } from './SevenStepWizard/SevenStepWizard';
-import { Sparkles, GraduationCap, Compass, Presentation, HelpCircle, Lightbulb, Play } from 'lucide-react';
+import { Sparkles, GraduationCap, Compass, Presentation, Sliders, Eye } from 'lucide-react';
 
 interface SingleInequalityLabProps {
   initialLearningMode?: LearningMode;
@@ -36,6 +36,9 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
   // Learning mode: 'practice' | 'guided' | 'teacher'
   const [learningMode, setLearningMode] = useState<LearningMode>(initialLearningMode);
 
+  // Mobile view tab in Free Practice mode: 'all' | 'graph' | 'controls'
+  const [mobileFreeTab, setMobileFreeTab] = useState<'all' | 'graph' | 'controls'>('all');
+
   // Opti assistant visibility
   const [optiVisible, setOptiVisible] = useState(true);
 
@@ -50,8 +53,6 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
   // Dynamic Opti message calculation
   const optiState = useMemo(() => {
     const isOrigin = pointM.x === 0 && pointM.y === 0;
-    const isDefaultIneq = inequality.a === 2 && inequality.b === 1 && inequality.op === '<=' && inequality.c === 6;
-
     const isThroughOrigin = Math.abs(inequality.c) < 1e-6;
 
     if (learningMode === 'guided') {
@@ -202,21 +203,21 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Top Breadcrumb & Mode Selector Header */}
-      <div className="bg-white border-b border-slate-200 px-3 sm:px-4 py-2 sm:py-2.5 shadow-xs">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5">
+      <div className="bg-white border-b border-slate-200 px-2.5 sm:px-4 py-2 sm:py-2.5 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={onBackToHome}
-              className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 min-h-[36px]"
+              className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 min-h-[36px] cursor-pointer"
             >
-              ← Trang chủ
+              ← <span className="hidden xs:inline">Trang chủ</span>
             </button>
             <div className="h-4 w-px bg-slate-200 hidden sm:block" />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-none">
-                  Phòng Thí Nghiệm Miền Nghiệm
+                <h1 className="text-xs sm:text-base font-bold text-slate-900 leading-none">
+                  Module 2: Một BPT
                 </h1>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5 hidden sm:block">
@@ -230,7 +231,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
             <button
               type="button"
               onClick={() => setLearningMode('guided')}
-              className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+              className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'guided'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -243,7 +244,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
             <button
               type="button"
               onClick={() => setLearningMode('practice')}
-              className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+              className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'practice'
                   ? 'bg-white text-blue-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -256,7 +257,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
             <button
               type="button"
               onClick={() => setLearningMode('teacher')}
-              className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+              className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'teacher'
                   ? 'bg-white text-purple-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -281,25 +282,66 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
         ) : (
           <>
             {/* Switch to Wizard Prompt Banner */}
-            <div className="bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200/80 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 text-xs shadow-xs">
-              <div className="flex items-center gap-2.5">
+            <div className="bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200/80 rounded-2xl p-2.5 sm:p-3.5 flex items-center justify-between gap-2 text-xs shadow-xs">
+              <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
                   <GraduationCap className="w-4 h-4" />
                 </div>
-                <div>
-                  <span className="font-bold text-slate-800">Đang ở chế độ Thực hành tự do:</span>
+                <div className="min-w-0">
+                  <span className="font-bold text-slate-800 block sm:inline truncate">
+                    Đang ở chế độ Tự do ({formatInequality(inequality)})
+                  </span>
                   <span className="text-slate-600 ml-1 hidden sm:inline">
-                    Kéo điểm M và chỉnh sửa hệ số bất kỳ. Bạn có thể chuyển sang quy trình 7 bước để làm bài theo mẫu chuẩn SGK.
+                    — Kéo điểm M và chỉnh sửa hệ số bất kỳ hoặc chuyển sang 7 bước SGK.
                   </span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setLearningMode('guided')}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 transition shadow-xs flex items-center gap-1"
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 transition shadow-xs flex items-center gap-1 cursor-pointer"
               >
-                <span>Vào phòng 7 bước</span>
+                <span>7 bước SGK</span>
                 <Sparkles className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Mobile Quick View Switcher in Free Practice Mode */}
+            <div className="lg:hidden grid grid-cols-3 gap-1 bg-slate-200/80 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setMobileFreeTab('all')}
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition ${
+                  mobileFreeTab === 'all'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600'
+                }`}
+              >
+                Xem tất cả
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileFreeTab('graph')}
+                className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition ${
+                  mobileFreeTab === 'graph'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Đồ thị & Giải</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileFreeTab('controls')}
+                className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition ${
+                  mobileFreeTab === 'controls'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Đổi hệ số</span>
               </button>
             </div>
 
@@ -316,10 +358,14 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
               onSelectHint={handleSelectHint}
             />
 
-            {/* Core Layout: Control (Left) - Graph (Center) - Explanation (Right) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              {/* Left Column: Control Panel (4 cols) */}
-              <div className="lg:col-span-4 xl:col-span-4 flex flex-col gap-4">
+            {/* Core Layout: On Mobile, Graph + Explanation comes FIRST so students see the graph immediately */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+              {/* Left Column on Desktop / Second on Mobile: Control Panel (4 cols) */}
+              <div
+                className={`lg:col-span-4 xl:col-span-4 flex flex-col gap-4 order-2 lg:order-1 ${
+                  mobileFreeTab === 'graph' ? 'hidden lg:flex' : 'flex'
+                }`}
+              >
                 <ControlPanel
                   inequality={inequality}
                   onInequalityChange={setInequality}
@@ -331,8 +377,12 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
                 />
               </div>
 
-              {/* Center Column: Interactive Graph Canvas (8 cols with explanation stacked) */}
-              <div className="lg:col-span-8 xl:col-span-8 flex flex-col gap-5">
+              {/* Center Column on Desktop / First on Mobile: Interactive Graph Canvas (8 cols) */}
+              <div
+                className={`lg:col-span-8 xl:col-span-8 flex flex-col gap-4 sm:gap-5 order-1 lg:order-2 ${
+                  mobileFreeTab === 'controls' ? 'hidden lg:flex' : 'flex'
+                }`}
+              >
                 <GraphCanvas
                   inequality={inequality}
                   pointM={pointM}

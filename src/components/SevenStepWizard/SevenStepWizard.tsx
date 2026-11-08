@@ -654,6 +654,34 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
             })}
           </div>
 
+          {/* Mobile Quick SGK Test Presets Bar */}
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">
+              Bài mẫu:
+            </span>
+            {TEST_PRESETS.map((tp, idx) => {
+              const isActive =
+                ineq.a === tp.ineq.a &&
+                ineq.b === tp.ineq.b &&
+                ineq.op === tp.ineq.op &&
+                ineq.c === tp.ineq.c;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectPreset(tp.ineq)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap shrink-0 transition cursor-pointer ${
+                    isActive
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 active:bg-blue-50'
+                  }`}
+                >
+                  {tp.name}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Expandable Mobile Step Drawer */}
           {showMobileStepList && (
             <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
