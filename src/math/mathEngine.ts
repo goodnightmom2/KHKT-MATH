@@ -101,6 +101,51 @@ export function checkPointInequality(
 }
 
 /**
+ * Format a number cleanly as integer, exact fraction (for repeating decimals like 8/3), or 2-decimal number
+ */
+export function formatNumberClean(val: number): string {
+  if (!Number.isFinite(val)) return '0';
+  if (Math.abs(val) < 1e-9) return '0';
+  if (Math.abs(val - Math.round(val)) < 1e-6) {
+    return `${Math.round(val)}`;
+  }
+  // Check terminating 1 or 2 decimal places (denominators 2, 4, 5, 10, 20, 25, 50, 100)
+  const rounded2 = Math.round(val * 100) / 100;
+  if (Math.abs(val - rounded2) < 1e-6) {
+    return `${rounded2}`;
+  }
+  // Check small denominators (3, 6, 7, 8, 9, 11, 12) for exact fraction display e.g. 8/3
+  const sign = val < 0 ? '-' : '';
+  const absVal = Math.abs(val);
+  for (let den = 2; den <= 12; den++) {
+    const num = Math.round(absVal * den);
+    if (Math.abs(absVal - num / den) < 1e-5) {
+      return `${sign}${num}/${den}`;
+    }
+  }
+  return `${rounded2}`;
+}
+
+/**
+ * Parse user input supporting both decimals ("2.5", "2,5") and fractions ("8/3", "-4/3")
+ */
+export function parseMathInput(raw: string): number {
+  const cleaned = raw.trim().replace(',', '.');
+  if (!cleaned) return NaN;
+  if (cleaned.includes('/')) {
+    const parts = cleaned.split('/');
+    if (parts.length === 2) {
+      const num = Number(parts[0].trim());
+      const den = Number(parts[1].trim());
+      if (Number.isFinite(num) && Number.isFinite(den) && Math.abs(den) > 1e-9) {
+        return num / den;
+      }
+    }
+  }
+  return Number(cleaned);
+}
+
+/**
  * Format full substitution expression with explicit operators:
  * e.g., 2 × 1 + 1 × 2 = 4
  */
@@ -110,41 +155,43 @@ export function formatExplicitSubstitution(
   x: number,
   y: number
 ): { exprWithMul: string; intermediateExpr: string; totalLhs: number } {
-  const roundedX = Math.round(x * 100) / 100;
-  const roundedY = Math.round(y * 100) / 100;
+  const strX = formatNumberClean(x);
+  const strY = formatNumberClean(y);
 
-  const formatNum = (n: number) => (n < 0 ? `(${n})` : `${n}`);
+  const formatNumStr = (val: number, s: string) => (val < 0 || s.includes('/') ? `(${s})` : s);
 
-  const valA = Math.round(a * roundedX * 1000) / 1000;
-  const valB = Math.round(b * roundedY * 1000) / 1000;
+  const valA = a * x;
+  const valB = b * y;
   const totalLhs = Math.round((valA + valB) * 1000) / 1000;
+  const strValA = formatNumberClean(valA);
+  const strValB = formatNumberClean( Math.abs(valB) );
 
   let exprWithMul = '';
   let intermediateExpr = '';
 
   if (a !== 0 && b !== 0) {
-    const partA = `${a} × ${formatNum(roundedX)}`;
+    const partA = `${a} × ${formatNumStr(x, strX)}`;
     if (b > 0) {
-      exprWithMul = `${partA} + ${b} × ${formatNum(roundedY)}`;
+      exprWithMul = `${partA} + ${b} × ${formatNumStr(y, strY)}`;
     } else {
-      exprWithMul = `${partA} - ${Math.abs(b)} × ${formatNum(roundedY)}`;
+      exprWithMul = `${partA} - ${Math.abs(b)} × ${formatNumStr(y, strY)}`;
     }
 
     if (valB >= 0) {
-      intermediateExpr = `${valA} + ${valB}`;
+      intermediateExpr = `${strValA} + ${formatNumberClean(valB)}`;
     } else {
-      intermediateExpr = `${valA} - ${Math.abs(valB)}`;
+      intermediateExpr = `${strValA} - ${strValB}`;
     }
   } else if (a !== 0) {
-    exprWithMul = `${a} × ${formatNum(roundedX)}`;
-    intermediateExpr = `${valA}`;
+    exprWithMul = `${a} × ${formatNumStr(x, strX)}`;
+    intermediateExpr = `${strValA}`;
   } else if (b !== 0) {
     if (b > 0) {
-      exprWithMul = `${b} × ${formatNum(roundedY)}`;
+      exprWithMul = `${b} × ${formatNumStr(y, strY)}`;
     } else {
-      exprWithMul = `-${Math.abs(b)} × ${formatNum(roundedY)}`;
+      exprWithMul = `-${Math.abs(b)} × ${formatNumStr(y, strY)}`;
     }
-    intermediateExpr = `${valB}`;
+    intermediateExpr = `${formatNumberClean(valB)}`;
   } else {
     exprWithMul = '0';
     intermediateExpr = '0';
@@ -156,7 +203,7 @@ export function formatExplicitSubstitution(
 /**
  * Check if a point lies on the line ax + by = c (with numerical tolerance)
  */
-export function isPointOnLine(a: number, b: number, c: number, point: Point2D, eps = 1e-5): boolean {
+export function isPointOnLine(a: number, b: number, c: number, point: Point2D, eps = 1e-3): boolean {
   return Math.abs(a * point.x + b * point.y - c) < eps;
 }
 
@@ -192,20 +239,14 @@ export function getSamplePointsOnLine(a: number, b: number, c: number): [Point2D
 
   // Case 3: Line passes through origin (c = 0)
   if (Math.abs(c) < 1e-6) {
-    // A is (0, 0), B can be (b, -a) or (1, -a/b)
-    const x2 = 1;
-    const y2 = -a / b;
-    return [{ x: 0, y: 0 }, { x: x2, y: y2 }];
+    return [{ x: 0, y: 0 }, { x: b, y: -a }];
   }
 
-  // Case 4: General line (intercepts with axes)
-  // x-intercept: (c/a, 0)
-  // y-intercept: (0, c/b)
-  const pA: Point2D = { x: Math.round((c / a) * 10) / 10, y: 0 };
-  const pB: Point2D = { x: 0, y: Math.round((c / b) * 10) / 10 };
+  // Case 4: General line (exact intercepts with Ox and Oy so isPointOnLine is always exact)
+  const pA: Point2D = { x: c / a, y: 0 };
+  const pB: Point2D = { x: 0, y: c / b };
 
-  // If intercepts happen to be identical (only when c = 0, handled above), pick another point
-  if (pA.x === pB.x && pA.y === pB.y) {
+  if (Math.abs(pA.x - pB.x) < 1e-6 && Math.abs(pA.y - pB.y) < 1e-6) {
     return [{ x: 0, y: 0 }, { x: 1, y: (c - a) / b }];
   }
 
@@ -224,8 +265,9 @@ export function evaluatePointWithSteps(ineq: Inequality, point: Point2D): Evalua
     point.y
   );
 
-  const roundedX = Math.round(point.x * 100) / 100;
-  const roundedY = Math.round(point.y * 100) / 100;
+  const roundedX = formatNumberClean(point.x);
+  const roundedY = formatNumberClean(point.y);
+  const strTotalLhs = formatNumberClean(totalLhs);
   const opSymbol = getOperatorSymbol(ineq.op);
   const isClosed = isClosedRegion(ineq.op);
 
@@ -240,16 +282,16 @@ export function evaluatePointWithSteps(ineq: Inequality, point: Point2D): Evalua
     {
       stepNumber: 2,
       title: 'Tính giá trị vế trái',
-      expression: `${exprWithMul} = ${intermediateExpr !== `${totalLhs}` ? `${intermediateExpr} = ` : ''}${totalLhs}`,
-      result: `Vế trái = ${totalLhs}`,
-      explanation: `Thực hiện phép nhân và cộng đại số: giá trị của vế trái tại điểm M là ${totalLhs}.`
+      expression: `${exprWithMul} = ${intermediateExpr !== `${strTotalLhs}` ? `${intermediateExpr} = ` : ''}${strTotalLhs}`,
+      result: `Vế trái = ${strTotalLhs}`,
+      explanation: `Thực hiện phép nhân và cộng đại số: giá trị của vế trái tại điểm M là ${strTotalLhs}.`
     },
     {
       stepNumber: 3,
       title: 'So sánh với vế phải',
-      expression: `${totalLhs} ${opSymbol} ${ineq.c}`,
+      expression: `${strTotalLhs} ${opSymbol} ${ineq.c}`,
       result: satisfies ? 'Mệnh đề ĐÚNG' : 'Mệnh đề SAI',
-      explanation: `So sánh giá trị vế trái (${totalLhs}) với vế phải (${ineq.c}) qua dấu "${opSymbol}". Kết quả phép so sánh là ${satisfies ? 'chính xác (ĐÚNG)' : 'không thỏa mãn (SAI)'}.`
+      explanation: `So sánh giá trị vế trái (${strTotalLhs}) với vế phải (${ineq.c}) qua dấu "${opSymbol}". Kết quả phép so sánh là ${satisfies ? 'chính xác (ĐÚNG)' : 'không thỏa mãn (SAI)'}.`
     },
     {
       stepNumber: 4,
@@ -268,7 +310,7 @@ export function evaluatePointWithSteps(ineq: Inequality, point: Point2D): Evalua
     }
   ];
 
-  const algebraicSummary = `${exprWithMul} = ${totalLhs} ${opSymbol} ${ineq.c} (${satisfies ? 'Thỏa mãn' : 'Không thỏa mãn'})`;
+  const algebraicSummary = `${exprWithMul} = ${strTotalLhs} ${opSymbol} ${ineq.c} (${satisfies ? 'Thỏa mãn' : 'Không thỏa mãn'})`;
 
   return {
     inequality: ineq,

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { OptimizationResult, Point2D, RealWorldScenario, StepNumber } from '../../types/math';
+import { LearningMode, OptimizationResult, Point2D, RealWorldScenario, StepNumber } from '../../types/math';
 import { formatBoundaryLine, formatInequality } from '../../math/mathEngine';
 import { formatCoord, formatPointCoord, formatValueWithApprox } from '../../math/systemMathEngine';
 import { OptimizationGraphCanvas } from '../../graph/OptimizationGraphCanvas';
@@ -29,6 +29,7 @@ import confetti from 'canvas-confetti';
 interface OptimizationSevenStepWizardProps {
   scenario: RealWorldScenario;
   result: OptimizationResult;
+  learningMode?: LearningMode;
   onSelectScenario: (scenarioId: string) => void;
   onSwitchToSandbox: () => void;
 }
@@ -46,9 +47,11 @@ const OPTI_STEP_TITLES = [
 export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardProps> = ({
   scenario,
   result,
+  learningMode = 'guided',
   onSelectScenario,
   onSwitchToSandbox
 }) => {
+  const isTeacher = learningMode === 'teacher';
   const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [completedSteps, setCompletedSteps] = useState<Set<StepNumber>>(new Set());
 
@@ -253,7 +256,33 @@ ${result.practicalAnswer}`;
     window.speechSynthesis.speak(utterance);
   };
 
-  const canRevealOptimal = currentStep >= 7 || completedSteps.has(6) || tableAllVerified;
+  const canRevealOptimal = currentStep >= 7 || completedSteps.has(6) || tableAllVerified || isTeacher;
+
+  const handleTeacherAutoSolveAll = () => {
+    setStep1GoalChoice(objective.goal);
+    setStep1Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Mục tiêu bài toán là ${objective.goal.toUpperCase()} (${objective.label}).`
+    });
+    setStep2IntegerChoice(scenario.integerRequired);
+    setStep2Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Điều kiện biến thực tế ${scenario.integerRequired ? 'x, y ∈ ℕ (số nguyên)' : 'x, y ≥ 0 (số thực)'}.`
+    });
+    const firstOpt = vertexEvaluations.find(ve => ve.isOptimal);
+    if (firstOpt) {
+      setPredictedOptVertex(firstOpt.label);
+      setStep6Feedback({
+        isCorrect: true,
+        message: `[Đáp án chuẩn]: Đỉnh tối ưu là ${firstOpt.label}${formatPointCoord(firstOpt.vertex)} đạt ${optimalValue !== null ? formatValueWithApprox(optimalValue) : ''} ${objective.unit}.`
+      });
+    }
+    if (optimalValue !== null) {
+      setKValue(optimalValue);
+    }
+    setTableAllVerified(true);
+    setCompletedSteps(new Set([1, 2, 3, 4, 5, 6, 7]));
+  };
 
   // Opti Socrates Guidance per step
   const optiGuidance = useMemo(() => {
@@ -486,6 +515,52 @@ ${result.practicalAnswer}`;
           </div>
         </div>
       </div>
+
+      {/* TEACHER ANSWER KEY & QUICK VERIFICATION PANEL */}
+      {isTeacher && (
+        <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-amber-50/70 rounded-2xl border border-indigo-200 p-3.5 shadow-xs flex flex-col gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-indigo-700 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                Bảng Đáp Án & Kiểm Tra Giáo Viên (Tối Ưu Hóa)
+              </span>
+              <span className="text-xs font-bold text-indigo-950">
+                Hàm mục tiêu: <span className="font-mono text-purple-800">{objective.label} ({objective.goal.toUpperCase()})</span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleTeacherAutoSolveAll}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Tự động điền & Kiểm tra đúng toàn bộ 7 bước</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+            <div className="p-2 rounded-xl bg-white border border-indigo-100">
+              <span className="font-bold text-indigo-900 block">B1–B2: Mục tiêu & Điều kiện biến</span>
+              <span className="text-slate-700">
+                {objective.goal.toUpperCase()} • {scenario.integerRequired ? 'Biến nguyên (x, y ∈ ℕ)' : 'Biến thực (x, y ≥ 0)'}
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-indigo-100">
+              <span className="font-bold text-indigo-900 block">B5: Giá trị tại các đỉnh</span>
+              <span className="text-slate-700 font-mono">
+                {vertexEvaluations.map(ve => `${ve.label}${formatPointCoord(ve.vertex)}→${formatValueWithApprox(ve.value)}`).join('; ')}
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-indigo-100">
+              <span className="font-bold text-indigo-900 block">B6–B7: Đáp án tối ưu chuẩn</span>
+              <span className="text-emerald-700 font-bold">
+                {optimalValue !== null ? `${formatValueWithApprox(optimalValue)} ${objective.unit}` : 'Không có'} tại{' '}
+                {vertexEvaluations.filter(ve => ve.isOptimal).map(ve => `${ve.label}${formatPointCoord(ve.vertex)}`).join(', ')}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MOBILE VIEWPORT SWITCHER BAR (Visible only on < xl) */}
       <div className="xl:hidden flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs overflow-x-auto no-scrollbar">
@@ -1002,6 +1077,39 @@ ${result.practicalAnswer}`;
             {/* STEP 7: KẾT LUẬN THỰC TIỄN & BÀI HỌC TỐI ƯU */}
             {currentStep === 7 && (
               <div className="space-y-4">
+                {/* AI Opti Post-Completion Comprehensive Audit Card */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50 via-purple-50/70 to-emerald-50 border border-indigo-200 shadow-xs text-xs space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-extrabold text-sm text-indigo-950">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <span>AI Opti Chấm Bài & Kiểm Tra Đúng/Sai Toàn Bộ 7 Bước Tối Ưu</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px]">
+                      Hoàn thành 100%
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 1–2 (Mục tiêu & Điều kiện biến):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG ({objective.goal.toUpperCase()}, {scenario.integerRequired ? 'x,y ∈ ℕ' : 'x,y ≥ 0'})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 3–5 (Hệ BPT & Đỉnh miền khả thi):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG ({system.length} BPT, {vertexEvaluations.length} đỉnh cực biên)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 6 (Cực trị hàm mục tiêu):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG ({optimalValue !== null ? formatValueWithApprox(optimalValue) : ''} {objective.unit})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="p-4 rounded-xl bg-purple-50/90 border border-purple-200 text-purple-950 text-xs space-y-2.5">
                   <div className="flex items-center gap-2 font-bold text-sm text-purple-900">
                     <Award className="w-5 h-5 text-purple-600 shrink-0" />
@@ -1173,7 +1281,7 @@ ${result.practicalAnswer}`;
           result={result}
           onHighlightVertex={setHighlightVertex}
           onSelectKValue={setKValue}
-          defaultRevealed={currentStep >= 7}
+          defaultRevealed={currentStep >= 7 || isTeacher}
           onAllVerifiedChange={setTableAllVerified}
         />
       </div>

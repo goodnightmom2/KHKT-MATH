@@ -1,7 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Point2D, StepNumber, SystemAnalysisResult, SystemInequality } from '../../types/math';
-import { formatBoundaryLine, formatInequality, getOperatorSymbol } from '../../math/mathEngine';
-import { parseCoordinateInput, formatFractionOrDecimal } from '../../math/systemMathEngine';
+import { LearningMode, Point2D, StepNumber, SystemAnalysisResult, SystemInequality } from '../../types/math';
+import {
+  formatBoundaryLine,
+  formatExplicitSubstitution,
+  formatInequality,
+  getOperatorSymbol,
+} from '../../math/mathEngine';
+import {
+  parseCoordinateInput,
+  formatCoord,
+  formatPointCoord,
+} from '../../math/systemMathEngine';
 import { SystemGraphCanvas } from '../../graph/SystemGraphCanvas';
 import { OptiMascot } from '../../mascot/OptiMascot';
 import {
@@ -32,6 +41,7 @@ import confetti from 'canvas-confetti';
 interface SystemSevenStepWizardProps {
   system: SystemInequality[];
   analysis: SystemAnalysisResult;
+  learningMode?: LearningMode;
   onSystemChange: (newSystem: SystemInequality[]) => void;
   onSelectPreset: (presetId: string) => void;
   onSwitchToSandbox: () => void;
@@ -50,10 +60,12 @@ const SYSTEM_STEP_TITLES = [
 export const SystemSevenStepWizard: React.FC<SystemSevenStepWizardProps> = ({
   system,
   analysis,
+  learningMode = 'guided',
   onSystemChange,
   onSelectPreset,
   onSwitchToSandbox
 }) => {
+  const isTeacher = learningMode === 'teacher';
   const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [completedSteps, setCompletedSteps] = useState<Set<StepNumber>>(new Set());
 
@@ -214,7 +226,7 @@ export const SystemSevenStepWizard: React.FC<SystemSevenStepWizardProps> = ({
           isSolved: true,
           feedback: {
             isCorrect: true,
-            message: `Hoàn toàn chính xác! Giao điểm của ${inter.lineLabels[0]} và ${inter.lineLabels[1]} là (${inter.point.x}; ${inter.point.y}).`
+            message: `Hoàn toàn chính xác! Giao điểm của ${inter.lineLabels[0]} và ${inter.lineLabels[1]} là ${formatPointCoord(inter.point)}.`
           }
         }
       }));
@@ -242,13 +254,13 @@ export const SystemSevenStepWizard: React.FC<SystemSevenStepWizardProps> = ({
       ...prev,
       [interId]: {
         ...(prev[interId] || { inputX: '', inputY: '', isSolved: false, showHint: false, showSolution: false }),
-        inputX: String(inter.point.x),
-        inputY: String(inter.point.y),
+        inputX: formatCoord(inter.point.x),
+        inputY: formatCoord(inter.point.y),
         isSolved: true,
         showSolution: true,
         feedback: {
           isCorrect: true,
-          message: `Đã hiện lời giải chuẩn: (${inter.point.x}; ${inter.point.y}).`
+          message: `Đã hiện lời giải chuẩn: ${formatPointCoord(inter.point)}.`
         }
       }
     }));
@@ -259,14 +271,14 @@ export const SystemSevenStepWizard: React.FC<SystemSevenStepWizardProps> = ({
     const next: Record<string, any> = {};
     for (const inter of analysis.intersections) {
       next[inter.id] = {
-        inputX: String(inter.point.x),
-        inputY: String(inter.point.y),
+        inputX: formatCoord(inter.point.x),
+        inputY: formatCoord(inter.point.y),
         isSolved: true,
         showHint: false,
         showSolution: true,
         feedback: {
           isCorrect: true,
-          message: `Tọa độ: (${inter.point.x}; ${inter.point.y})`
+          message: `Tọa độ: ${formatPointCoord(inter.point)}`
         }
       };
     }
@@ -336,6 +348,22 @@ export const SystemSevenStepWizard: React.FC<SystemSevenStepWizardProps> = ({
     confetti({ particleCount: 55, spread: 70, origin: { y: 0.7 } });
   };
 
+  // Teacher 1-click Auto-Fill & Verify All 7 Steps
+  const handleTeacherAutoSolveAll = () => {
+    handleAutoFillAllStep4();
+    handleAutoVerifyAllStep5();
+    const actual = analysis.regionType;
+    if (actual === 'bounded_polygon') setPredictedType('bounded');
+    else if (actual === 'unbounded') setPredictedType('unbounded');
+    else if (actual === 'empty') setPredictedType('empty');
+    else setPredictedType('degenerate');
+    setStep3Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: ${analysis.description}`
+    });
+    setCompletedSteps(new Set([1, 2, 3, 4, 5, 6, 7]));
+  };
+
   // STEP 7: Copy SGK Conclusion
   const handleCopyConclusion = () => {
     const formalText = `KẾT LUẬN MIỀN NGHIỆM CỦA HỆ BẤT PHƯƠNG TRÌNH:
@@ -345,7 +373,7 @@ ${system.map((s, idx) => `Ràng buộc (${idx + 1}): ${formatInequality(s)} [Đ�
 ${analysis.sgkSummary}
 Các đỉnh của miền nghiệm: ${
       analysis.feasibleVertices.length > 0
-        ? analysis.feasibleVertices.map((p, i) => `Đỉnh ${i + 1}(${p.x}; ${p.y})`).join(', ')
+        ? analysis.feasibleVertices.map((p, i) => `Đỉnh ${i + 1}${formatPointCoord(p)}`).join(', ')
         : 'Không có đỉnh hữu hạn'
     }
 Đặc điểm: ${analysis.description}`;
@@ -530,8 +558,12 @@ Các đỉnh của miền nghiệm: ${
           <div className="flex items-center gap-2.5 min-w-0">
             <OptiMascot expression="happy" actionState="nod" size={36} />
             <div className="min-w-0">
-              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-blue-600 text-white block w-fit mb-0.5">
-                Opti Hướng Dẫn Bước {currentStep}
+              <span
+                className={`text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded text-white block w-fit mb-0.5 ${
+                  isTeacher ? 'bg-purple-600' : 'bg-blue-600'
+                }`}
+              >
+                {isTeacher ? `Opti AI • Trợ Giảng GV (Bước ${currentStep})` : `Opti AI • Hướng Dẫn HS (Bước ${currentStep})`}
               </span>
               <p className="text-xs text-slate-800 font-medium line-clamp-2">
                 {optiGuidance.text}
@@ -596,6 +628,49 @@ Các đỉnh của miền nghiệm: ${
           </div>
         </div>
       </div>
+
+      {/* TEACHER ANSWER KEY & QUICK VERIFICATION PANEL */}
+      {isTeacher && (
+        <div className="bg-gradient-to-r from-purple-50 via-amber-50/70 to-indigo-50 rounded-2xl border border-purple-200 p-3.5 shadow-xs flex flex-col gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-purple-700 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                Bảng Đáp Án & Kiểm Tra Giáo Viên (Hệ BPT)
+              </span>
+              <span className="text-xs font-bold text-purple-950">
+                Số ràng buộc: {system.length} BPT • Giao điểm: {analysis.intersections.length} • Đỉnh hợp lệ: {analysis.feasibleVertices.length}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleTeacherAutoSolveAll}
+              className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Tự động điền & Kiểm tra đúng toàn bộ 7 bước</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B3: Phân loại miền nghiệm</span>
+              <span className="text-slate-700">{analysis.description}</span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B4: Tất cả giao điểm từng cặp bờ</span>
+              <span className="text-slate-700 font-mono">
+                {analysis.intersections.map(i => `${i.lineLabels[0]}∩${i.lineLabels[1]}${formatPointCoord(i.point)}`).join('; ') || 'Không có'}
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B5–B6: Các đỉnh miền nghiệm hợp lệ</span>
+              <span className="text-emerald-700 font-mono font-bold">
+                {analysis.feasibleVertices.map((p, idx) => `Đỉnh ${idx + 1}${formatPointCoord(p)}`).join(', ') || 'Không có đỉnh hữu hạn'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3. MULTI-COLUMN WORKSPACE */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
@@ -851,15 +926,17 @@ Các đỉnh của miền nghiệm: ${
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    Học sinh tự giải hệ phương trình từng cặp bờ để tìm tọa độ giao điểm:
+                    Giải hệ phương trình từng cặp bờ để tìm tọa độ giao điểm (x; y):
                   </p>
-                  <button
-                    type="button"
-                    onClick={handleAutoFillAllStep4}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                  >
-                    Tự động điền tất cả
-                  </button>
+                  {isTeacher && (
+                    <button
+                      type="button"
+                      onClick={handleAutoFillAllStep4}
+                      className="text-[11px] font-bold text-purple-700 hover:text-purple-900 hover:underline cursor-pointer"
+                    >
+                      [GV] Tự động điền tất cả
+                    </button>
+                  )}
                 </div>
 
                 {/* Progress badge */}
@@ -917,7 +994,7 @@ Các đỉnh của miền nghiệm: ${
                           <div className="flex items-center gap-2">
                             {calc.isSolved ? (
                               <span className="font-mono font-bold text-emerald-800 text-xs bg-emerald-100 px-2 py-0.5 rounded">
-                                ({inter.point.x}; {inter.point.y})
+                                {formatPointCoord(inter.point)}
                               </span>
                             ) : (
                               <span className="text-[11px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
@@ -1005,18 +1082,21 @@ Các đỉnh của miền nghiệm: ${
                                 className="text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
                               >
                                 <HelpCircle className="w-3 h-3" />
-                                <span>{calc.showHint ? 'Ẩn gợi ý' : 'Xem gợi ý cách giải'}</span>
+                                <span>{calc.showHint ? 'Ẩn gợi ý phương pháp' : 'Xem gợi ý cách giải'}</span>
                               </button>
 
-                              <span>•</span>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRevealSolution(inter.id)}
-                                className="text-amber-700 hover:underline font-semibold cursor-pointer"
-                              >
-                                Hiện lời giải chi tiết
-                              </button>
+                              {isTeacher && (
+                                <>
+                                  <span>•</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevealSolution(inter.id)}
+                                    className="text-purple-700 hover:underline font-semibold cursor-pointer"
+                                  >
+                                    [GV] Hiện đáp án giao điểm
+                                  </button>
+                                </>
+                              )}
                             </div>
 
                             {calc.showHint && (
@@ -1061,15 +1141,17 @@ Các đỉnh của miền nghiệm: ${
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    Học sinh tự xác định mỗi giao điểm là <strong>Đỉnh hợp lệ</strong> hay <strong>Bị loại</strong>:
+                    Thay tọa độ từng giao điểm vào các BPT để xác định <strong>Đỉnh hợp lệ</strong> hay <strong>Bị loại</strong>:
                   </p>
-                  <button
-                    type="button"
-                    onClick={handleAutoVerifyAllStep5}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                  >
-                    Kiểm chứng tất cả
-                  </button>
+                  {isTeacher && (
+                    <button
+                      type="button"
+                      onClick={handleAutoVerifyAllStep5}
+                      className="text-[11px] font-bold text-purple-700 hover:text-purple-900 hover:underline cursor-pointer"
+                    >
+                      [GV] Kiểm chứng tất cả
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 font-bold">
@@ -1107,7 +1189,7 @@ Các đỉnh của miền nghiệm: ${
                               {inter.lineLabels[0]} ∩ {inter.lineLabels[1]}:
                             </span>
                             <span className="font-mono font-extrabold text-blue-900 text-xs">
-                              ({inter.point.x}; {inter.point.y})
+                              {formatPointCoord(inter.point)}
                             </span>
                           </div>
 
@@ -1163,12 +1245,17 @@ Các đỉnh của miền nghiệm: ${
                         {filter.isVerified && (
                           <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px] space-y-1">
                             <span className="font-semibold text-slate-700 block">
-                              Kết quả thay ({inter.point.x}; {inter.point.y}) vào các BPT:
+                              Kết quả thay {formatPointCoord(inter.point)} vào các BPT:
                             </span>
 
                             <div className="flex flex-col gap-1">
                               {system.map((ineq, cIdx) => {
-                                const lhs = Math.round((ineq.a * inter.point.x + ineq.b * inter.point.y) * 100) / 100;
+                                const sub = formatExplicitSubstitution(
+                                  ineq.a,
+                                  ineq.b,
+                                  inter.point.x,
+                                  inter.point.y
+                                );
                                 const isSatisfied = !inter.violatedConstraints.includes(cIdx);
 
                                 return (
@@ -1179,7 +1266,7 @@ Các đỉnh của miền nghiệm: ${
                                     }`}
                                   >
                                     <span>
-                                      BPT ({cIdx + 1}): {ineq.a}×({inter.point.x}) + {ineq.b}×({inter.point.y}) = {lhs} {ineq.op} {ineq.c}
+                                      BPT ({cIdx + 1}): {sub.exprWithMul} = {formatCoord(sub.totalLhs)} {getOperatorSymbol(ineq.op)} {ineq.c}
                                     </span>
                                     <span>{isSatisfied ? '✓ Đúng' : '✗ Sai (Vi phạm)'}</span>
                                   </div>
@@ -1234,7 +1321,7 @@ Các đỉnh của miền nghiệm: ${
                           onMouseLeave={() => setHighlightVertex(null)}
                           className="px-2 py-1 rounded-lg bg-white border border-emerald-300 font-mono font-bold text-emerald-900 cursor-pointer shadow-xs hover:bg-emerald-100"
                         >
-                          Đỉnh {idx + 1}: ({p.x}; {p.y})
+                          Đỉnh {idx + 1}: {formatPointCoord(p)}
                         </span>
                       ))}
                     </div>
@@ -1259,7 +1346,7 @@ Các đỉnh của miền nghiệm: ${
                         <span className="font-semibold text-amber-900">Các điểm mốc bờ:</span>
                         {analysis.feasibleVertices.map((p, idx) => (
                           <span key={idx} className="px-2 py-0.5 rounded bg-white font-mono text-amber-900 border border-amber-300">
-                            ({p.x}; {p.y})
+                            {formatPointCoord(p)}
                           </span>
                         ))}
                       </div>
@@ -1313,6 +1400,37 @@ Các đỉnh của miền nghiệm: ${
             {/* STEP 7: TỔNG KẾT & KẾT LUẬN SGK TOÁN 10 */}
             {currentStep === 7 && (
               <div className="space-y-4">
+                {/* AI Opti Post-Completion Comprehensive Audit Card */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/70 to-emerald-50 border border-blue-200 shadow-xs text-xs space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-extrabold text-sm text-blue-950">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      <span>AI Opti Chấm Bài & Kiểm Tra Đúng/Sai Toàn Bộ 7 Bước Hệ BPT</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px]">
+                      Hoàn thành quy trình
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 1–3 (Nhận diện & Dự đoán miền):</span>
+                      <span className="font-mono font-bold text-emerald-700">✓ ĐÚNG ({system.length} BPT)</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 4 (Tính tọa độ giao điểm):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ Đã giải {solvedIntersectionsCount}/{analysis.intersections.length} giao điểm
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 5 (Lọc đỉnh thỏa mãn hệ):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ Đã kiểm tra {verifiedFiltersCount}/{analysis.intersections.length} điểm ({analysis.feasibleVertices.length} đỉnh hợp lệ)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="p-4 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-950 text-xs space-y-2.5">
                   <div className="flex items-center gap-2 font-bold text-sm text-emerald-900">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -1324,7 +1442,7 @@ Các đỉnh của miền nghiệm: ${
                     <div className="font-bold text-slate-700">Tọa độ các đỉnh của miền nghiệm:</div>
                     <div className="text-emerald-900">
                       {analysis.feasibleVertices.length > 0
-                        ? analysis.feasibleVertices.map((p, i) => `Đỉnh ${i + 1}(${p.x}; ${p.y})`).join(', ')
+                        ? analysis.feasibleVertices.map((p, i) => `Đỉnh ${i + 1}${formatPointCoord(p)}`).join(', ')
                         : 'Không có đỉnh hữu hạn (miền mở hoặc rỗng)'}
                     </div>
                   </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { IntersectionPoint, Point2D, SystemAnalysisResult } from '../../types/math';
-import { formatPointCoord } from '../../math/systemMathEngine';
+import { formatPointCoord, formatCoord } from '../../math/systemMathEngine';
+import { getOperatorSymbol } from '../../math/mathEngine';
 import { CheckCircle2, XCircle, AlertTriangle, Sparkles, Eye, Target, Compass } from 'lucide-react';
 
 interface SystemIntersectionTableProps {
@@ -182,8 +183,8 @@ export const SystemIntersectionTable: React.FC<SystemIntersectionTableProps> = (
                             {inter.violatedConstraints.map(c => {
                               const ineq = analysis.inequalities[c];
                               if (!ineq) return `(d${c + 1})`;
-                              const lhs = Math.round((ineq.a * inter.point.x + ineq.b * inter.point.y) * 100) / 100;
-                              return `${ineq.label || `(d${c + 1})`} [${lhs} ${ineq.op} ${ineq.c} là Sai]`;
+                              const lhs = ineq.a * inter.point.x + ineq.b * inter.point.y;
+                              return `${ineq.label || `(d${c + 1})`} [${formatCoord(lhs)} ${getOperatorSymbol(ineq.op)} ${ineq.c} là Sai]`;
                             }).join('; ')}
                           </span>
                         </div>

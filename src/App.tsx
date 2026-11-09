@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { ModuleCards, MODULES_CONFIG, ModuleData } from './components/ModuleCards';
@@ -8,6 +8,7 @@ import { OptimizationLab } from './components/OptimizationLab/OptimizationLab';
 import { PracticeLab } from './components/PracticeLab/PracticeLab';
 import { KnowledgeBaseModal } from './components/KnowledgeBaseModal';
 import { TeacherGuideModal } from './components/TeacherGuideModal';
+import { TeacherAuthModal } from './components/TeacherAuthModal';
 import { UnderDevModal } from './components/UnderDevModal';
 import { Footer } from './components/Footer';
 import { LearningMode } from './types/math';
@@ -16,29 +17,58 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'lab' | 'system' | 'optimization' | 'quiz'>('home');
   const [learningMode, setLearningMode] = useState<LearningMode>('guided');
 
+  // Default on launch is strictly Student Mode (isTeacherUnlocked = false)
+  const [isTeacherUnlocked, setIsTeacherUnlocked] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const pendingAuthCallbackRef = useRef<(() => void) | null>(null);
+
   // Modals
   const [isKnowledgeModalOpen, setIsKnowledgeModalOpen] = useState(false);
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState(false);
   const [underDevModule, setUnderDevModule] = useState<ModuleData | null>(null);
 
+  const handleRequestTeacherAuth = (onUnlocked: () => void) => {
+    if (isTeacherUnlocked) {
+      onUnlocked();
+      return;
+    }
+    pendingAuthCallbackRef.current = onUnlocked;
+    setIsAuthModalOpen(true);
+  };
+
+  const handleAuthSuccess = () => {
+    setIsTeacherUnlocked(true);
+    if (pendingAuthCallbackRef.current) {
+      const cb = pendingAuthCallbackRef.current;
+      pendingAuthCallbackRef.current = null;
+      cb();
+    }
+  };
+
+  const handleLockTeacherMode = () => {
+    setIsTeacherUnlocked(false);
+    setLearningMode('guided');
+  };
+
   const handleSelectModule = (modId: string) => {
+    const nextMode: LearningMode = isTeacherUnlocked && learningMode === 'teacher' ? 'teacher' : 'guided';
     if (modId === 'home') {
       setCurrentView('home');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (modId === 'lab') {
-      setLearningMode('guided');
+      setLearningMode(nextMode);
       setCurrentView('lab');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (modId === 'system') {
-      setLearningMode('guided');
+      setLearningMode(nextMode);
       setCurrentView('system');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (modId === 'optimization') {
-      setLearningMode('guided');
+      setLearningMode(nextMode);
       setCurrentView('optimization');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (modId === 'quiz') {
-      setLearningMode('guided');
+      setLearningMode(nextMode);
       setCurrentView('quiz');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (modId === 'knowledge') {
@@ -58,14 +88,19 @@ export default function App() {
   };
 
   const handleOpenTeacherGuide = () => {
-    setIsTeacherModalOpen(true);
+    handleRequestTeacherAuth(() => {
+      setLearningMode('teacher');
+      setIsTeacherModalOpen(true);
+    });
   };
 
   const handleLaunchTeacherLab = () => {
     setIsTeacherModalOpen(false);
-    setLearningMode('teacher');
-    setCurrentView('lab');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleRequestTeacherAuth(() => {
+      setLearningMode('teacher');
+      setCurrentView('lab');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
   };
 
   const handleGoToLabFromModal = () => {
@@ -81,8 +116,10 @@ export default function App() {
       {/* App Header */}
       <Header
         currentModule={currentView}
+        isTeacherUnlocked={isTeacherUnlocked}
         onSelectModule={handleSelectModule}
         onOpenTeacherGuide={handleOpenTeacherGuide}
+        onLockTeacherMode={handleLockTeacherMode}
       />
 
       {/* Main Content Area */}
@@ -102,24 +139,32 @@ export default function App() {
           /* Single Inequality Interactive Laboratory (Module 2) */
           <SingleInequalityLab
             initialLearningMode={learningMode}
+            isTeacherUnlocked={isTeacherUnlocked}
+            onRequestTeacherAuth={handleRequestTeacherAuth}
             onBackToHome={() => setCurrentView('home')}
           />
         ) : currentView === 'system' ? (
           /* System of Inequalities Interactive Laboratory (Module 3) */
           <SystemInequalityLab
             initialLearningMode={learningMode}
+            isTeacherUnlocked={isTeacherUnlocked}
+            onRequestTeacherAuth={handleRequestTeacherAuth}
             onBackToHome={() => setCurrentView('home')}
           />
         ) : currentView === 'optimization' ? (
           /* Linear Programming & Optimization Laboratory (Module 4) */
           <OptimizationLab
             initialLearningMode={learningMode}
+            isTeacherUnlocked={isTeacherUnlocked}
+            onRequestTeacherAuth={handleRequestTeacherAuth}
             onBackToHome={() => setCurrentView('home')}
           />
         ) : (
           /* Practice, Step-by-Step Assessment & Personalization Center (Module 5) */
           <PracticeLab
             initialLearningMode={learningMode}
+            isTeacherUnlocked={isTeacherUnlocked}
+            onRequestTeacherAuth={handleRequestTeacherAuth}
             onBackToHome={() => setCurrentView('home')}
           />
         )}
@@ -139,6 +184,15 @@ export default function App() {
         isOpen={isTeacherModalOpen}
         onClose={() => setIsTeacherModalOpen(false)}
         onOpenTeacherLab={handleLaunchTeacherLab}
+      />
+
+      <TeacherAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          pendingAuthCallbackRef.current = null;
+        }}
+        onSuccess={handleAuthSuccess}
       />
 
       <UnderDevModal

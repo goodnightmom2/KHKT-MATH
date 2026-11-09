@@ -32,6 +32,7 @@ import {
 interface PersonalizedPathViewProps {
   attempts: ExerciseAttemptRecord[];
   assignments: TeacherAssignment[];
+  allExercises?: AssessmentExercise[];
   onSelectExercise: (exercise: AssessmentExercise) => void;
   onOpenErrorAnalysis: (code: ErrorCodeId) => void;
 }
@@ -39,6 +40,7 @@ interface PersonalizedPathViewProps {
 export const PersonalizedPathView: React.FC<PersonalizedPathViewProps> = ({
   attempts,
   assignments,
+  allExercises = ASSESSMENT_EXERCISE_BANK,
   onSelectExercise,
   onOpenErrorAnalysis
 }) => {
@@ -270,7 +272,7 @@ export const PersonalizedPathView: React.FC<PersonalizedPathViewProps> = ({
 
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       {assign.exerciseIds.map(exId => {
-                        const ex = ASSESSMENT_EXERCISE_BANK.find(e => e.id === exId);
+                        const ex = allExercises.find(e => e.id === exId);
                         if (!ex) return null;
                         const isDone = analytics.completedExerciseIds.includes(exId);
                         return (

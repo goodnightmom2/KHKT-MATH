@@ -17,12 +17,14 @@ import { CheckCircle2, Search, Play, AlertCircle, Filter } from 'lucide-react';
 interface ExerciseBankViewProps {
   attempts: ExerciseAttemptRecord[];
   activeExerciseId: string;
+  allExercises?: AssessmentExercise[];
   onSelectExercise: (exercise: AssessmentExercise) => void;
 }
 
 export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
   attempts,
   activeExerciseId,
+  allExercises = ASSESSMENT_EXERCISE_BANK,
   onSelectExercise
 }) => {
   const [selectedTopic, setSelectedTopic] = useState<'ALL' | AssessmentTopicId>('ALL');
@@ -50,7 +52,7 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
   }, [attempts]);
 
   const filteredExercises = useMemo(() => {
-    return ASSESSMENT_EXERCISE_BANK.filter(ex => {
+    return allExercises.filter(ex => {
       if (selectedTopic !== 'ALL' && ex.topic !== selectedTopic) return false;
       if (selectedLevel !== 'ALL' && ex.level !== selectedLevel) return false;
       if (selectedType !== 'ALL' && ex.interactionType !== selectedType) return false;

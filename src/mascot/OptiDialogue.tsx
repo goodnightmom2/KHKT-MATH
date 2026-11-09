@@ -14,6 +14,7 @@ interface OptiDialogueProps {
   onToggleVisibility?: () => void;
   quickHints?: string[];
   onSelectHint?: (hint: string) => void;
+  roleMode?: 'student' | 'teacher';
   className?: string;
 }
 
@@ -28,9 +29,16 @@ export const OptiDialogue: React.FC<OptiDialogueProps> = ({
   onToggleVisibility,
   quickHints,
   onSelectHint,
+  roleMode,
   className = ''
 }) => {
   const [speechEnabled, setSpeechEnabled] = useState(false);
+  const isTeacherRole =
+    roleMode === 'teacher' ||
+    badge.toLowerCase().includes('giáo viên') ||
+    badge.toLowerCase().includes('sư phạm') ||
+    message.includes('[Chế độ Giáo viên]') ||
+    message.includes('[AI Trợ Giảng GV]');
 
   // Inferred action state if not explicitly passed:
   // Green / Happy / Cheering -> 'nod' (Gật đầu khen ngợi)
@@ -120,23 +128,33 @@ export const OptiDialogue: React.FC<OptiDialogueProps> = ({
       <div className="shrink-0 flex flex-col items-center">
         <OptiMascot expression={expression} pose={pose} size={88} actionState={effectiveActionState} />
         <div className="mt-1 flex items-center gap-1.5">
-          <span className="text-[11px] font-bold text-blue-700">Opti</span>
+          <span className="text-[11px] font-extrabold text-blue-700">
+            {isTeacherRole ? 'Opti AI • GV' : 'Opti AI • HS'}
+          </span>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
         </div>
       </div>
 
       {/* Speech bubble */}
       <div className="flex-1 w-full min-w-0">
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span
               className={`px-2 py-0.5 text-[11px] font-bold tracking-wide uppercase rounded-md ${themeStyles.badgeBg}`}
             >
               {badge}
             </span>
-            <span className="text-xs text-slate-500 flex items-center gap-1">
+            <span
+              className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md border flex items-center gap-1 ${
+                isTeacherRole
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-sky-100 text-sky-800 border-sky-200'
+              }`}
+            >
               <Sparkles className="w-3 h-3 text-amber-500" />
-              Đồng hành cùng bạn
+              {isTeacherRole
+                ? 'AI Trợ Giảng Giáo Viên (Kiểm tra Đúng/Sai & Đáp án)'
+                : 'AI Hướng Dẫn Học Sinh (Chỉ dẫn phương pháp & Chấm khi hoàn thành)'}
             </span>
           </div>
 

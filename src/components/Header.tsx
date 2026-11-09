@@ -1,17 +1,32 @@
 import React from 'react';
 import { OptiMascot } from '../mascot/OptiMascot';
-import { Presentation, Compass, BookOpen, Layers, Target, Award, Home } from 'lucide-react';
+import {
+  Presentation,
+  Compass,
+  BookOpen,
+  Layers,
+  Target,
+  Award,
+  Home,
+  Lock,
+  LogOut,
+  GraduationCap
+} from 'lucide-react';
 
 interface HeaderProps {
   currentModule: string;
+  isTeacherUnlocked?: boolean;
   onSelectModule: (modId: string) => void;
   onOpenTeacherGuide: () => void;
+  onLockTeacherMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentModule,
+  isTeacherUnlocked = false,
   onSelectModule,
-  onOpenTeacherGuide
+  onOpenTeacherGuide,
+  onLockTeacherMode
 }) => {
   const isLab =
     currentModule === 'lab' ||
@@ -147,15 +162,48 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Lý thuyết</span>
             </button>
 
-            <button
-              type="button"
-              onClick={onOpenTeacherGuide}
-              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 text-[11px] sm:text-xs font-bold transition-all shadow-xs cursor-pointer"
-            >
-              <Presentation className="w-3.5 h-3.5 text-purple-600" />
-              <span className="hidden sm:inline">Chế độ giáo viên</span>
-              <span className="sm:hidden">GV</span>
-            </button>
+            {isTeacherUnlocked ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onOpenTeacherGuide}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[11px] sm:text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+                  title="Cẩm nang & Điều khiển Chế độ Giáo viên"
+                >
+                  <Presentation className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">Chế độ Giáo viên</span>
+                  <span className="sm:hidden">GV</span>
+                </button>
+                {onLockTeacherMode && (
+                  <button
+                    type="button"
+                    onClick={onLockTeacherMode}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold transition-all cursor-pointer"
+                    title="Khóa Chế độ Giáo viên và quay về Chế độ Học sinh"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden lg:inline">Về Học sinh</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="hidden xl:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+                  <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Học sinh</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={onOpenTeacherGuide}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 text-[11px] sm:text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  title="Nhập mật khẩu để chuyển sang Chế độ Giáo viên"
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">Chế độ Giáo viên</span>
+                  <span className="sm:hidden">GV</span>
+                </button>
+              </div>
+            )}
 
             <div
               onClick={() => onSelectModule('lab')}

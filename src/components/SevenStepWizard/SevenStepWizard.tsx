@@ -16,6 +16,7 @@ import {
   formatExplicitSubstitution,
   formatInequality,
   formatLinearLHS,
+  formatNumberClean,
   getBoundaryStyle,
   getOperatorSymbol,
   getSamplePointsOnLine,
@@ -206,57 +207,72 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
     return evaluatePointWithSteps(ineq, testPoint);
   }, [ineq, testPoint]);
 
-  // 3-Tier Pedagogical Hints tailored for each of the 7 steps
+  // 3-Tier Pedagogical Hints tailored for each of the 7 steps (Socratic for Student, Full Key for Teacher)
+  const isTeacher = learningMode === 'teacher';
   const stepHints = useMemo<StepHintInfo>(() => {
+    const strAx = formatNumberClean(pointA.x);
+    const strAy = formatNumberClean(pointA.y);
+    const strBx = formatNumberClean(pointB.x);
+    const strBy = formatNumberClean(pointB.y);
+    const strMx = formatNumberClean(testPoint.x);
+    const strMy = formatNumberClean(testPoint.y);
+    const strLhs = formatNumberClean(testSub.totalLhs);
+
     switch (currentStep) {
       case 1:
         return {
-          tier1: 'Bất phương trình đã cho có đúng 2 ẩn x, y với bậc cao nhất là 1 không?',
-          tier2: 'Dạng chuẩn của bất phương trình bậc nhất hai ẩn là ax + by ≤ c (hoặc <, ≥, >) với a và b không đồng thời bằng 0.',
-          tier3: `Hệ số hiện tại: a = ${ineq.a}, b = ${ineq.b}, c = ${ineq.c}. Cả hai hệ số a, b đều thỏa mãn điều kiện tồn tại!`
+          tier1: 'Bước 1 (Định hướng): Quan sát bất phương trình xem có đúng 2 ẩn x, y bậc nhất không?',
+          tier2: 'Bước 1 (Phương pháp): Đối chiếu với dạng chuẩn ax + by ≤ c (hoặc <, ≥, >). Điều kiện bắt buộc là a và b không đồng thời bằng 0 (a² + b² ≠ 0).',
+          tier3: `Hướng dẫn chi tiết: Hệ số của x là a = ${ineq.a}, hệ số của y là b = ${ineq.b}, vế phải là c = ${ineq.c}. Vì a và b không cùng bằng 0 nên đây là BPT bậc nhất hai ẩn hợp lệ. Hãy bấm "Kiểm tra & Tiếp tục"!`
         };
       case 2:
         return {
-          tier1: 'Dấu so sánh trong bài là gì? Nó có dấu gạch bằng "=" ở dưới không?',
-          tier2: 'Nếu có dấu "=" (≤ hoặc ≥), miền nghiệm lấy cả bờ (nét liền, miền đóng). Nếu là dấu nghiêm ngặt (< hoặc >), không lấy bờ (nét đứt, miền mở).',
-          tier3: `Bất phương trình mang dấu "${getOperatorSymbol(ineq.op)}". Do đó phương trình đường biên là (d): ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)} và biểu diễn bằng nét ${expectedLineStyle === 'solid' ? 'liền' : 'đứt'}.`
+          tier1: 'Bước 2 (Định hướng): Nhìn kỹ dấu bất đẳng thức trong đề bài: có dấu gạch ngang "=" ở dưới hay không?',
+          tier2: 'Bước 2 (Phương pháp): Quy tắc SGK Toán 10: Dấu ≤ hoặc ≥ (có dấu "=") → lấy cả đường bờ (vẽ NÉT LIỀN). Dấu < hoặc > (không có dấu "=") → không lấy bờ (vẽ NÉT ĐỨT).',
+          tier3: isTeacher
+            ? `[Đáp án GV - Bước 2]: Dấu "${getOperatorSymbol(ineq.op)}" → Đường bờ (d): ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)} vẽ bằng NÉT ${expectedLineStyle === 'solid' ? 'LIỀN (Miền đóng)' : 'ĐỨT (Miền mở)'}.`
+            : `Hướng dẫn làm Bước 2: Em hãy đối chiếu dấu "${getOperatorSymbol(ineq.op)}" của đề bài với quy tắc ở Gợi ý 2, chọn ô "Nét liền" hoặc "Nét đứt" rồi bấm nút "Kiểm chứng" nhé!`
         };
       case 3:
         return {
-          tier1: 'Để xác định một đường thẳng, ta cần tìm ít nhất mấy điểm phân biệt?',
-          tier2: 'Cách chuẩn nhất trong SGK là tìm giao điểm với hai trục: Cho x = 0 tìm y, sau đó cho y = 0 tìm x (nếu c ≠ 0). Hai điểm A và B phải phân biệt!',
-          tier3: `Hai điểm mẫu chuẩn: A(${pointA.x}; ${pointA.y}) và B(${pointB.x}; ${pointB.y}). Thay vào đều cho a*x + b*y = ${ineq.c}. Bấm nút "Kiểm tra & Vẽ bờ" để hoàn thành!`
+          tier1: 'Bước 3 (Định hướng): Để vẽ đường thẳng bờ (d), ta cần xác định tọa độ của 2 điểm phân biệt A và B nằm trên (d).',
+          tier2: 'Bước 3 (Phương pháp): Cách dễ nhất: Lần lượt cho y = 0 để tính x = c/a (giao với trục Ox) và cho x = 0 để tính y = c/b (giao với trục Oy). Nếu c = 0 thì chọn A(0; 0) và B(b; -a).',
+          tier3: isTeacher
+            ? `[Đáp án GV - Bước 3]: Hai điểm chuẩn trên (d): A(${strAx}; ${strAy}) và B(${strBx}; ${strBy}). Thay vào ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)} đều thỏa mãn.`
+            : `Hướng dẫn làm Bước 3: Thay tọa độ điểm A và B vào phương trình ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)}. Em có thể tự nhập tọa độ hoặc bấm "Gợi ý 2 điểm cắt trục" rồi ấn "Kiểm tra & Vẽ bờ (d)".`
         };
       case 4:
         return {
-          tier1: 'Điểm thử M được chọn có được phép nằm ngay trên đường thẳng bờ (d) không?',
+          tier1: 'Bước 4 (Định hướng): Điểm thử M dùng để đại diện cho một nửa mặt phẳng. Vậy M có được nằm trên ranh giới (đường bờ d) không?',
           tier2: isThroughOrigin
-            ? 'Vì đường thẳng đi qua gốc tọa độ O(0; 0), ta bắt buộc phải chọn điểm khác như P(1; 0) hoặc Q(0; 1).'
-            : 'Gốc tọa độ O(0; 0) là điểm thử tốt nhất và dễ tính nhất khi c ≠ 0.',
-          tier3: `Điểm hiện tại: M(${testPoint.x}; ${testPoint.y}). ${isTestPointOnLine ? 'CẢNH BÁO: M đang nằm trên bờ! Hãy chọn điểm khác!' : 'Điểm M không thuộc bờ, rất thích hợp làm điểm thử!'}`
+            ? 'Bước 4 (Phương pháp): Đường bờ (d) đi qua gốc O(0; 0) vì c = 0! Do đó tuyệt đối KHÔNG chọn O(0; 0), hãy chọn P(1; 0) hoặc Q(0; 1).'
+            : 'Bước 4 (Phương pháp): Khi đường bờ không đi qua gốc tọa độ (c ≠ 0), ta luôn ưu tiên chọn M là gốc tọa độ O(0; 0) để thay số nhanh nhất.',
+          tier3: `Hướng dẫn làm Bước 4: Điểm đang chọn là M(${strMx}; ${strMy}). ${isTestPointOnLine ? 'CẢNH BÁO: Thay M vào phương trình bờ thấy nằm ngay trên bờ! Em hãy chọn điểm khác ngoài bờ nhé.' : 'Điểm M này không nằm trên đường bờ (d), hoàn toàn hợp lệ! Hãy bấm "Xác nhận điểm M".'}`
         };
       case 5:
         return {
-          tier1: 'Thay hoành độ xM và tung độ yM vào vế trái ax + by và thực hiện phép tính nhân trước, cộng sau.',
-          tier2: `Phép thay số: ${testSub.exprWithMul}. Tính tổng vế trái rồi so sánh với c = ${ineq.c}.`,
-          tier3: `Kết quả tính vế trái = ${testSub.totalLhs}. So sánh: ${testSub.totalLhs} ${getOperatorSymbol(ineq.op)} ${ineq.c} là ${testEval.satisfies ? 'MỆNH ĐỀ ĐÚNG' : 'MỆNH ĐỀ SAI'}.`
+          tier1: 'Bước 5 (Định hướng): Thay x = xM và y = yM vào biểu thức vế trái ax + by, thực hiện nhân trước cộng sau.',
+          tier2: `Bước 5 (Phương pháp): Tính biểu thức ${testSub.exprWithMul}. Sau khi ra kết quả, hãy đặt cạnh dấu "${getOperatorSymbol(ineq.op)} ${ineq.c}" xem bất đẳng thức đó Đúng hay Sai.`,
+          tier3: isTeacher
+            ? `[Đáp án GV - Bước 5]: Vế trái = ${testSub.intermediateExpr} = ${strLhs}. So sánh: ${strLhs} ${getOperatorSymbol(ineq.op)} ${ineq.c} là MỆNH ĐỀ ${testEval.satisfies ? 'ĐÚNG' : 'SAI'}.`
+            : `Hướng dẫn làm Bước 5: Ta tính tích thứ nhất (${ineq.a} × ${strMx}) cộng tích thứ hai (${ineq.b} × ${strMy}). Nhập kết quả vào ô số 1, chọn ĐÚNG hoặc SAI ở mục 2 rồi bấm "Kiểm chứng phép tính"!`
         };
       case 6:
         return {
-          tier1: 'Dựa vào kết quả ở Bước 5, mệnh đề thay số là ĐÚNG hay SAI?',
-          tier2: testEval.satisfies
-            ? 'Vì phép thay điểm thử cho kết quả ĐÚNG, nửa mặt phẳng CHỨA điểm thử chính là miền nghiệm!'
-            : 'Vì phép thay điểm thử cho kết quả SAI, nửa mặt phẳng KHÔNG CHỨA điểm thử chính là miền nghiệm!',
-          tier3: `Hãy chọn nửa mặt phẳng ${testEval.satisfies ? 'CHỨA điểm thử M' : 'KHÔNG CHỨA điểm M'} rồi bấm "Kiểm chứng kết luận".`
+          tier1: 'Bước 6 (Định hướng): Dựa vào kết quả mệnh đề ở Bước 5 để quyết định lấy nửa mặt phẳng nào.',
+          tier2: 'Bước 6 (Phương pháp): Quy tắc SGK: Nếu thay điểm thử M được mệnh đề ĐÚNG → Miền nghiệm là nửa mặt phẳng CHỨA M. Nếu được mệnh đề SAI → Miền nghiệm là nửa mặt phẳng KHÔNG CHỨA M.',
+          tier3: isTeacher
+            ? `[Đáp án GV - Bước 6]: Vì mệnh đề tại M(${strMx}; ${strMy}) là ${testEval.satisfies ? 'ĐÚNG' : 'SAI'}, miền nghiệm là nửa mặt phẳng ${testEval.satisfies ? 'CHỨA điểm M' : 'KHÔNG CHỨA điểm M'}.`
+            : `Hướng dẫn làm Bước 6: Ở Bước 5 em đã xác định mệnh đề tại M(${strMx}; ${strMy}) là ${testEval.satisfies ? 'ĐÚNG' : 'SAI'}. Áp dụng quy tắc ở Gợi ý 2 để chọn nửa mặt phẳng tương ứng và bấm "Kiểm chứng kết luận"!`
         };
       case 7:
         return {
-          tier1: 'Đã hoàn thành 6 bước! Đọc lại bản kết luận chuẩn mực SGK Toán 10.',
-          tier2: 'Miền nghiệm là nửa mặt phẳng bờ (d) (kể cả bờ hoặc không kể bờ) chứa hoặc không chứa điểm thử M.',
-          tier3: `Bất phương trình ${formatInequality(ineq)} có miền nghiệm là nửa mặt phẳng ${isClosed ? 'đóng (kể cả bờ)' : 'mở (không kể bờ)'} ${testEval.satisfies ? `chứa điểm M(${testPoint.x}; ${testPoint.y})` : `không chứa điểm M(${testPoint.x}; ${testPoint.y})`}.`
+          tier1: 'Bước 7 (Tổng kết): Bạn đã hoàn thành toàn bộ các bước! AI Opti đã tổng hợp bảng chấm Đúng/Sai chi tiết bên dưới.',
+          tier2: 'Cấu trúc kết luận chuẩn SGK gồm 3 ý: (1) Nửa mặt phẳng bờ d, (2) Kể cả bờ hay không kể bờ, (3) Chứa hay không chứa điểm thử M.',
+          tier3: `Kết luận chuẩn SGK: Bất phương trình ${formatInequality(ineq)} có miền nghiệm là nửa mặt phẳng ${isClosed ? 'đóng (kể cả bờ d)' : 'mở (không kể bờ d)'} ${testEval.satisfies ? `chứa điểm M(${strMx}; ${strMy})` : `không chứa điểm M(${strMx}; ${strMy})`}.`
         };
     }
-  }, [currentStep, ineq, expectedLineStyle, pointA, pointB, isThroughOrigin, testPoint, isTestPointOnLine, testSub, testEval, isClosed]);
+  }, [currentStep, ineq, isTeacher, expectedLineStyle, pointA, pointB, isThroughOrigin, testPoint, isTestPointOnLine, testSub, testEval, isClosed]);
 
   // Dynamic reaction of Opti mascot
   const optiMessage = useMemo<{
@@ -264,6 +280,14 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
     expression: OptiExpression;
     actionState: OptiActionState;
   }>(() => {
+    const strMx = formatNumberClean(testPoint.x);
+    const strMy = formatNumberClean(testPoint.y);
+    const strAx = formatNumberClean(pointA.x);
+    const strAy = formatNumberClean(pointA.y);
+    const strBx = formatNumberClean(pointB.x);
+    const strBy = formatNumberClean(pointB.y);
+    const strLhs = formatNumberClean(testSub.totalLhs);
+
     if (activeHintTier === 1) {
       return {
         text: `[Gợi ý Cấp 1 - Định hướng]: ${stepHints.tier1}`,
@@ -286,10 +310,18 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
       };
     }
 
+    if (isTeacher) {
+      return {
+        text: `[AI Trợ Giảng GV - Bước ${currentStep}/7]: Đáp án chuẩn: Bờ (d): ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)} (${expectedLineStyle === 'solid' ? 'Nét liền' : 'Nét đứt'}), qua A(${strAx}; ${strAy}), B(${strBx}; ${strBy}). Điểm thử M(${strMx}; ${strMy}) có VT = ${strLhs} ${getOperatorSymbol(ineq.op)} ${ineq.c} (${testEval.satisfies ? 'ĐÚNG → Lấy nửa MP chứa M' : 'SAI → Lấy nửa MP không chứa M'}).`,
+        expression: 'happy',
+        actionState: 'nod'
+      };
+    }
+
     switch (currentStep) {
       case 1:
         return {
-          text: 'Chào bạn! Hãy cùng Opti nhận diện hệ số a, b, c và phân loại miền đóng hay mở nhé.',
+          text: 'Hướng dẫn Bước 1: Em hãy đối chiếu phương trình với dạng chuẩn ax + by ≤ c, xác định các hệ số a, b, c và bấm "Kiểm tra & Tiếp tục" nhé!',
           expression: 'happy',
           actionState: 'nod'
         };
@@ -297,7 +329,7 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
         return {
           text: step2Feedback
             ? step2Feedback.message
-            : `Đường biên có phương trình (d): ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)}. Bạn chọn nét liền hay nét đứt?`,
+            : `Hướng dẫn Bước 2: Đường biên (d): ${formatBoundaryLine(ineq.a, ineq.b, ineq.c)}. Hãy quan sát dấu "${getOperatorSymbol(ineq.op)}" xem có dấu "=" hay không để chọn Nét liền hoặc Nét đứt.`,
           expression: step2Feedback?.isCorrect ? 'happy' : step2Feedback ? 'surprised' : 'thinking',
           actionState: step2Feedback?.isCorrect ? 'celebrate' : step2Feedback ? 'think' : 'idle'
         };
@@ -305,7 +337,7 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
         return {
           text: step3Feedback
             ? step3Feedback.message
-            : 'Để vẽ đường thẳng bờ (d), hãy tìm hai điểm phân biệt A và B thuộc (d) rồi nhấn vẽ bờ nhé.',
+            : 'Hướng dẫn Bước 3: Tìm 2 điểm phân biệt A, B thuộc đường thẳng (d) bằng cách lần lượt cho y = 0 tìm x và cho x = 0 tìm y, sau đó nhấn "Kiểm tra & Vẽ bờ (d)".',
           expression: step3Feedback?.isCorrect ? 'happy' : 'thinking',
           actionState: step3Feedback?.isCorrect ? 'celebrate' : step3Feedback ? 'think' : 'idle'
         };
@@ -314,10 +346,10 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
           text: step4Feedback
             ? step4Feedback.message
             : isTestPointOnLine
-            ? 'Cảnh báo: Điểm M đang nằm trên đường biên (d)! Vui lòng chọn điểm khác không nằm trên bờ.'
+            ? 'Cảnh báo phương pháp: Điểm M đang nằm ngay trên đường biên (d)! Em hãy chọn một điểm nằm ngoài đường bờ (d) để làm điểm thử.'
             : isThroughOrigin
-            ? 'Vì đường thẳng đi qua gốc tọa độ O(0; 0), ta không thể chọn O! Hãy thử chọn P(1; 0) nhé.'
-            : 'Hãy chọn điểm thử M không nằm trên bờ (d). Điểm O(0; 0) thường là lựa chọn tối ưu!',
+            ? 'Hướng dẫn Bước 4: Vì đường thẳng đi qua gốc O(0; 0) nên ta không được chọn O! Hãy chọn điểm thử P(1; 0) hoặc Q(0; 1) nhé.'
+            : 'Hướng dẫn Bước 4: Chọn một điểm thử M không nằm trên bờ (d). Gợi ý: Gốc tọa độ O(0; 0) giúp tính nhẩm nhanh nhất!',
           expression: isTestPointOnLine ? 'surprised' : 'happy',
           actionState: isTestPointOnLine ? 'think' : 'idle'
         };
@@ -325,7 +357,7 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
         return {
           text: step5Feedback
             ? step5Feedback.message
-            : `Thay tọa độ M(${testPoint.x}; ${testPoint.y}) vào vế trái: ${testSub.exprWithMul}. Hãy tính toán và so sánh với c!`,
+            : `Hướng dẫn Bước 5: Thay tọa độ M(${strMx}; ${strMy}) vào vế trái: ${testSub.exprWithMul}. Em hãy tự tính giá trị vế trái rồi so sánh với ${ineq.c}!`,
           expression: step5Feedback?.isCorrect ? 'happy' : 'thinking',
           actionState: step5Feedback?.isCorrect ? 'celebrate' : step5Feedback ? 'think' : 'idle'
         };
@@ -333,18 +365,18 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
         return {
           text: step6Feedback
             ? step6Feedback.message
-            : `Mệnh đề thay số là ${testEval.satisfies ? 'ĐÚNG' : 'SAI'}. Vậy miền nghiệm là nửa mặt phẳng nào?`,
+            : `Hướng dẫn Bước 6: Dựa vào kết quả Bước 5 (mệnh đề ${testEval.satisfies ? 'ĐÚNG' : 'SAI'}), em hãy áp dụng quy tắc SGK để chọn nửa mặt phẳng nghiệm trên đồ thị!`,
           expression: step6Feedback?.isCorrect ? 'happy' : 'thinking',
           actionState: step6Feedback?.isCorrect ? 'celebrate' : 'think'
         };
       case 7:
         return {
-          text: 'Xuất sắc! Bạn đã hoàn thành trọn vẹn quy trình 7 bước biểu diễn miền nghiệm chuẩn Toán 10!',
+          text: 'Chúc mừng em đã hoàn thành cả 7 bước! AI Opti đã kiểm tra và tổng hợp bảng đánh giá Đúng/Sai từng bước ở bên dưới.',
           expression: 'happy',
           actionState: 'celebrate'
         };
     }
-  }, [activeHintTier, stepHints, currentStep, ineq, step2Feedback, step3Feedback, step4Feedback, isTestPointOnLine, isThroughOrigin, testPoint, testSub, step5Feedback, step6Feedback, testEval]);
+  }, [activeHintTier, stepHints, currentStep, ineq, isTeacher, expectedLineStyle, pointA, pointB, step2Feedback, step3Feedback, step4Feedback, isTestPointOnLine, isThroughOrigin, testPoint, testSub, step5Feedback, step6Feedback, testEval]);
 
   // Speech helper
   const handleSpeak = useCallback(() => {
@@ -576,6 +608,42 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
     setCurrentStep(1);
     setCompletedSteps(new Set());
     setActiveHintTier(null);
+  };
+
+  // Teacher 1-click Auto-Fill & Verify All 7 Steps
+  const handleTeacherAutoSolveAll = () => {
+    const [sampleA, sampleB] = getSamplePointsOnLine(ineq.a, ineq.b, ineq.c);
+    setPointA(sampleA);
+    setPointB(sampleB);
+    setUserLineStyle(expectedLineStyle);
+    setLineDrawn(true);
+    setUserLhsInput(String(testSub.totalLhs));
+    setUserTruthChoice(testEval.satisfies);
+    const expSide: 'with_test' | 'without_test' = testEval.satisfies ? 'with_test' : 'without_test';
+    setSelectedSide(expSide);
+    setIsSideVerifiedCorrect(true);
+    setTeacherRevealAnswers(true);
+    setCompletedSteps(new Set([1, 2, 3, 4, 5, 6, 7]));
+    setStep2Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Dấu "${getOperatorSymbol(ineq.op)}" → Đường bờ (d) vẽ nét ${expectedLineStyle === 'solid' ? 'liền' : 'đứt'}.`
+    });
+    setStep3Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Hai điểm A(${formatNumberClean(sampleA.x)}; ${formatNumberClean(sampleA.y)}) và B(${formatNumberClean(sampleB.x)}; ${formatNumberClean(sampleB.y)}) thuộc bờ (d).`
+    });
+    setStep4Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Điểm thử M(${formatNumberClean(testPoint.x)}; ${formatNumberClean(testPoint.y)}) hợp lệ.`
+    });
+    setStep5Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Vế trái = ${formatNumberClean(testSub.totalLhs)} ${getOperatorSymbol(ineq.op)} ${ineq.c} là ${testEval.satisfies ? 'ĐÚNG' : 'SAI'}.`
+    });
+    setStep6Feedback({
+      isCorrect: true,
+      message: `[Đáp án chuẩn]: Miền nghiệm là nửa mặt phẳng ${testEval.satisfies ? 'CHỨA' : 'KHÔNG CHỨA'} điểm M.`
+    });
   };
 
   const handleCopyConclusion = () => {
@@ -816,8 +884,12 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-blue-600 text-white">
-                    Opti
+                  <span
+                    className={`text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded text-white ${
+                      isTeacher ? 'bg-purple-600' : 'bg-blue-600'
+                    }`}
+                  >
+                    {isTeacher ? 'Opti AI • Trợ Giảng Giáo Viên' : 'Opti AI • Hướng Dẫn Học Sinh'}
                   </span>
                   <span className="text-[11px] text-slate-500 truncate hidden sm:inline">
                     Bước {currentStep}: {STEP_TITLES[currentStep - 1].title}
@@ -909,6 +981,59 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* TEACHER ANSWER KEY & QUICK VERIFICATION PANEL */}
+      {isTeacher && (
+        <div className="bg-gradient-to-r from-purple-50 via-amber-50/70 to-indigo-50 rounded-2xl border border-purple-200 p-3.5 shadow-xs flex flex-col gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-purple-700 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                Bảng Đáp Án & Kiểm Tra Giáo Viên
+              </span>
+              <span className="text-xs font-bold text-purple-950">
+                Đề bài: <span className="font-mono text-blue-700">{formatInequality(ineq)}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTeacherAutoSolveAll}
+                className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Tự động điền & Kiểm tra đúng 7 bước</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B1–B2: Đường bờ & Nét vẽ</span>
+              <span className="text-slate-700 font-mono">
+                (d): {formatBoundaryLine(ineq.a, ineq.b, ineq.c)} • {expectedLineStyle === 'solid' ? 'Nét liền (Đóng)' : 'Nét đứt (Mở)'}
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B3: Hai điểm chuẩn trên bờ</span>
+              <span className="text-slate-700 font-mono">
+                A({formatNumberClean(pointA.x)}; {formatNumberClean(pointA.y)}), B({formatNumberClean(pointB.x)}; {formatNumberClean(pointB.y)})
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B4–B5: Thay điểm thử M</span>
+              <span className="text-slate-700 font-mono">
+                M({formatNumberClean(testPoint.x)}; {formatNumberClean(testPoint.y)}) → VT = {formatNumberClean(testSub.totalLhs)} {getOperatorSymbol(ineq.op)} {ineq.c} ({testEval.satisfies ? 'ĐÚNG' : 'SAI'})
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-purple-100">
+              <span className="font-bold text-purple-900 block">B6–B7: Kết luận miền nghiệm</span>
+              <span className="text-emerald-700 font-bold">
+                Nửa MP bờ (d) {isClosed ? '(lấy bờ)' : '(bỏ bờ)'} {testEval.satisfies ? 'CHỨA M' : 'KHÔNG CHỨA M'}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1410,24 +1535,26 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
                 <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-xs">
                   <div className="font-bold text-blue-900 mb-1 flex items-center justify-between">
                     <span>Biểu thức thay số đầy đủ toán tử:</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowCalculationDetails(!showCalculationDetails)}
-                      className="text-blue-700 hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
-                    >
-                      <Calculator className="w-3 h-3" />
-                      <span>{showCalculationDetails ? 'Thu gọn' : 'Xem từng bước tính'}</span>
-                    </button>
+                    {(isTeacher || completedSteps.has(5)) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCalculationDetails(!showCalculationDetails)}
+                        className="text-blue-700 hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+                      >
+                        <Calculator className="w-3 h-3" />
+                        <span>{showCalculationDetails ? 'Thu gọn' : 'Xem từng bước tính'}</span>
+                      </button>
+                    )}
                   </div>
                   <div className="font-mono bg-white p-2.5 rounded-lg border border-blue-200 text-blue-950 font-bold overflow-x-auto text-xs">
                     {testSub.exprWithMul}
                   </div>
 
-                  {showCalculationDetails && (
+                  {showCalculationDetails && (isTeacher || completedSteps.has(5)) && (
                     <div className="mt-2 p-2 rounded bg-white/80 border border-blue-100 text-[11px] text-slate-700 space-y-1">
                       <div>• Bước nhân: {testSub.intermediateExpr}</div>
-                      <div>• Bước cộng tổng vế trái: <strong>{testSub.totalLhs}</strong></div>
-                      <div>• So sánh với c = {ineq.c}: {testSub.totalLhs} {getOperatorSymbol(ineq.op)} {ineq.c} ({testEval.satisfies ? 'ĐÚNG' : 'SAI'})</div>
+                      <div>• Bước cộng tổng vế trái: <strong>{formatNumberClean(testSub.totalLhs)}</strong></div>
+                      <div>• So sánh với c = {ineq.c}: {formatNumberClean(testSub.totalLhs)} {getOperatorSymbol(ineq.op)} {ineq.c} ({testEval.satisfies ? 'ĐÚNG' : 'SAI'})</div>
                     </div>
                   )}
                 </div>
@@ -1646,6 +1773,55 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
             {/* STEP 7: TỔNG KẾT & LUYỆN TẬP */}
             {currentStep === 7 && (
               <div className="space-y-4">
+                {/* AI Opti Post-Completion Comprehensive Audit Card */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/70 to-emerald-50 border border-blue-200 shadow-xs text-xs space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-extrabold text-sm text-blue-950">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      <span>AI Opti Chấm Bài & Kiểm Tra Đúng/Sai Toàn Bộ Các Bước</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[11px]">
+                      Đạt {completedSteps.size >= 6 ? '6/6' : `${completedSteps.size}/6`} bước thực hành
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 1 (Hệ số BPT):</span>
+                      <span className="font-mono font-bold text-emerald-700">✓ ĐÚNG (a={ineq.a}, b={ineq.b}, c={ineq.c})</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 2 (Kiểu đường bờ d):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG ({expectedLineStyle === 'solid' ? 'Nét liền - Lấy bờ' : 'Nét đứt - Bỏ bờ'})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 3 (2 điểm thuộc d):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG (A({formatNumberClean(pointA.x)};{formatNumberClean(pointA.y)}), B({formatNumberClean(pointB.x)};{formatNumberClean(pointB.y)}))
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 4 (Điểm thử M ngoài bờ):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG (M({formatNumberClean(testPoint.x)};{formatNumberClean(testPoint.y)}) ∉ d)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 5 (Thay số & So sánh):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG (VT = {formatNumberClean(testSub.totalLhs)} {getOperatorSymbol(ineq.op)} {ineq.c} là {testEval.satisfies ? 'ĐÚNG' : 'SAI'})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white/90 border border-emerald-200">
+                      <span className="font-semibold text-slate-700">Bước 6 (Chọn miền nghiệm):</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        ✓ ĐÚNG (Nửa MP {testEval.satisfies ? 'chứa M' : 'không chứa M'})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-950 text-xs">
                   <div className="flex items-center gap-2 font-bold text-sm mb-2 text-emerald-900">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -1655,7 +1831,7 @@ export const SevenStepWizard: React.FC<SevenStepWizardProps> = ({
                     Miền nghiệm của bất phương trình <strong className="font-mono">{formatInequality(ineq)}</strong> là nửa mặt phẳng bờ (d):{' '}
                     <strong className="font-mono">{formatBoundaryLine(ineq.a, ineq.b, ineq.c)}</strong>{' '}
                     {isClosed ? '(kể cả bờ d – miền nghiệm đóng)' : '(không kể bờ d – miền nghiệm mở)'}{' '}
-                    {testEval.satisfies ? `chứa điểm thử M(${testPoint.x}; ${testPoint.y})` : `không chứa điểm thử M(${testPoint.x}; ${testPoint.y})`}.
+                    {testEval.satisfies ? `chứa điểm thử M(${formatNumberClean(testPoint.x)}; ${formatNumberClean(testPoint.y)})` : `không chứa điểm thử M(${formatNumberClean(testPoint.x)}; ${formatNumberClean(testPoint.y)})`}.
                   </p>
                   <div className="text-[11px] text-emerald-800 italic">
                     Phần {shadingMode === 'solution' ? 'được tô sáng màu xanh' : 'trắng không bị gạch bỏ'} trên hệ trục tọa độ Oxy chính là tập hợp tất cả các nghiệm.

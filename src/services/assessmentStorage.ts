@@ -1,6 +1,7 @@
 import {
   ExerciseAttemptRecord,
   TeacherAssignment,
+  AssessmentExercise,
   AssessmentTopicId,
   CognitiveLevel,
   ErrorCodeId
@@ -14,6 +15,40 @@ const STORE_ASSIGNMENTS = 'assignments';
 
 const LS_ATTEMPTS_KEY = 'optimath_v5_attempts_backup';
 const LS_ASSIGNMENTS_KEY = 'optimath_v5_assignments_backup';
+const LS_CUSTOM_EXERCISES_KEY = 'optimath_v5_custom_exercises';
+
+export function loadCustomExercises(): AssessmentExercise[] {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM_EXERCISES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomExercise(exercise: AssessmentExercise): AssessmentExercise[] {
+  const existing = loadCustomExercises();
+  const updated = [exercise, ...existing.filter(e => e.id !== exercise.id)];
+  try {
+    localStorage.setItem(LS_CUSTOM_EXERCISES_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore storage quota errors
+  }
+  return updated;
+}
+
+export function deleteCustomExercise(exerciseId: string): AssessmentExercise[] {
+  const existing = loadCustomExercises();
+  const updated = existing.filter(e => e.id !== exerciseId);
+  try {
+    localStorage.setItem(LS_CUSTOM_EXERCISES_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore
+  }
+  return updated;
+}
 
 const DEFAULT_ASSIGNMENTS: TeacherAssignment[] = [
   {

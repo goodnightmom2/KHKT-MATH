@@ -18,19 +18,43 @@ import {
   Maximize2,
   Minimize2,
   CheckCircle2,
-  Sliders
+  Sliders,
+  Lock
 } from 'lucide-react';
 
 interface SystemInequalityLabProps {
   initialLearningMode?: LearningMode;
+  isTeacherUnlocked?: boolean;
+  onRequestTeacherAuth?: (onUnlocked: () => void) => void;
   onBackToHome: () => void;
 }
 
 export const SystemInequalityLab: React.FC<SystemInequalityLabProps> = ({
   initialLearningMode = 'guided',
+  isTeacherUnlocked = false,
+  onRequestTeacherAuth,
   onBackToHome
 }) => {
-  const [learningMode, setLearningMode] = useState<LearningMode>(initialLearningMode);
+  const [learningMode, setLearningMode] = useState<LearningMode>(
+    initialLearningMode === 'teacher' && !isTeacherUnlocked ? 'guided' : initialLearningMode
+  );
+  const [teacherSubView, setTeacherSubView] = useState<'wizard' | 'sandbox'>('wizard');
+
+  useEffect(() => {
+    if (!isTeacherUnlocked && learningMode === 'teacher') {
+      setLearningMode('guided');
+    }
+  }, [isTeacherUnlocked, learningMode]);
+
+  const handleModeChange = (mode: LearningMode) => {
+    if (mode === 'teacher' && !isTeacherUnlocked) {
+      if (onRequestTeacherAuth) {
+        onRequestTeacherAuth(() => setLearningMode('teacher'));
+      }
+      return;
+    }
+    setLearningMode(mode);
+  };
 
   // Active System of Inequalities (Default: Bài 1 - Tứ giác SGK chuẩn)
   const [system, setSystem] = useState<SystemInequality[]>(SYSTEM_BENCHMARK_PRESETS[0].system);
@@ -100,7 +124,7 @@ export const SystemInequalityLab: React.FC<SystemInequalityLabProps> = ({
           <div className="flex items-center gap-1 bg-slate-100 p-0.5 sm:p-1 rounded-xl border border-slate-200">
             <button
               type="button"
-              onClick={() => setLearningMode('guided')}
+              onClick={() => handleModeChange('guided')}
               className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'guided'
                   ? 'bg-emerald-600 text-white shadow-xs'
@@ -113,7 +137,7 @@ export const SystemInequalityLab: React.FC<SystemInequalityLabProps> = ({
 
             <button
               type="button"
-              onClick={() => setLearningMode('practice')}
+              onClick={() => handleModeChange('practice')}
               className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'practice'
                   ? 'bg-white text-blue-700 shadow-xs'
@@ -126,14 +150,19 @@ export const SystemInequalityLab: React.FC<SystemInequalityLabProps> = ({
 
             <button
               type="button"
-              onClick={() => setLearningMode('teacher')}
+              onClick={() => handleModeChange('teacher')}
               className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'teacher'
                   ? 'bg-purple-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
+              title={isTeacherUnlocked ? 'Chế độ Giáo viên (Đã mở khóa)' : 'Nhập mật khẩu để vào Chế độ Giáo viên'}
             >
-              <Presentation className="w-3.5 h-3.5" />
+              {isTeacherUnlocked ? (
+                <Presentation className="w-3.5 h-3.5" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+              )}
               <span className="hidden sm:inline">Giáo viên</span>
             </button>
           </div>
@@ -142,19 +171,49 @@ export const SystemInequalityLab: React.FC<SystemInequalityLabProps> = ({
 
       {/* Main Container */}
       <div className="max-w-7xl mx-auto p-2.5 sm:p-4 md:p-6 w-full flex-1 flex flex-col gap-3 sm:gap-5">
-        {/* MODE 2: GUIDED 7-STEP LAB */}
-        {learningMode === 'guided' && (
+        {learningMode === 'teacher' && (
+          <div className="bg-purple-50 border border-purple-200 rounded-2xl p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-purple-900">
+              <Sparkles className="w-4 h-4 text-purple-600" />
+              <span>Chế độ Giáo viên (Module 3): Xem lời giải 7 bước & Bảng kiểm tra giao điểm</span>
+            </div>
+            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-purple-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setTeacherSubView('wizard')}
+                className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  teacherSubView === 'wizard' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Chấm & Giải 7 Bước
+              </button>
+              <button
+                type="button"
+                onClick={() => setTeacherSubView('sandbox')}
+                className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  teacherSubView === 'sandbox' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Bàn Trình Chiếu Đồ Thị
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* MODE 2: GUIDED 7-STEP LAB (Or Teacher Wizard View) */}
+        {(learningMode === 'guided' || (learningMode === 'teacher' && teacherSubView === 'wizard')) && (
           <SystemSevenStepWizard
             system={system}
             analysis={analysis}
+            learningMode={learningMode}
             onSystemChange={setSystem}
             onSelectPreset={handleSelectPreset}
-            onSwitchToSandbox={() => setLearningMode('practice')}
+            onSwitchToSandbox={() => handleModeChange('practice')}
           />
         )}
 
-        {/* MODE 1 & 3: FREE SANDBOX & TEACHER MODE */}
-        {(learningMode === 'practice' || learningMode === 'teacher') && (
+        {/* MODE 1 & 3: FREE SANDBOX & TEACHER SANDBOX MODE */}
+        {(learningMode === 'practice' || (learningMode === 'teacher' && teacherSubView === 'sandbox')) && (
           <div className="flex flex-col gap-4">
             {/* Teacher Mode Control Banner */}
             {learningMode === 'teacher' && (

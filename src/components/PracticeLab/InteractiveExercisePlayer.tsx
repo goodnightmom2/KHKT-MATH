@@ -30,11 +30,16 @@ import {
   Clock,
   Target,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Sparkles,
+  Presentation
 } from 'lucide-react';
+import { formatCoord } from '../../math/systemMathEngine';
 
 interface InteractiveExercisePlayerProps {
   exercise: AssessmentExercise;
+  isTeacherMode?: boolean;
+  allExercises?: AssessmentExercise[];
   onCompleteExercise: (record: ExerciseAttemptRecord) => void;
   onSelectExercise: (ex: AssessmentExercise) => void;
   onOpenErrorAnalysis: (code: ErrorCodeId) => void;
@@ -42,6 +47,8 @@ interface InteractiveExercisePlayerProps {
 
 export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps> = ({
   exercise,
+  isTeacherMode = false,
+  allExercises = ASSESSMENT_EXERCISE_BANK,
   onCompleteExercise,
   onSelectExercise,
   onOpenErrorAnalysis
@@ -254,12 +261,84 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
   };
 
   // Find previous / next exercise in bank
-  const currentBankIndex = ASSESSMENT_EXERCISE_BANK.findIndex(e => e.id === exercise.id);
-  const prevExercise = currentBankIndex > 0 ? ASSESSMENT_EXERCISE_BANK[currentBankIndex - 1] : null;
+  const currentBankIndex = allExercises.findIndex(e => e.id === exercise.id);
+  const prevExercise = currentBankIndex > 0 ? allExercises[currentBankIndex - 1] : null;
   const nextExercise =
-    currentBankIndex < ASSESSMENT_EXERCISE_BANK.length - 1
-      ? ASSESSMENT_EXERCISE_BANK[currentBankIndex + 1]
+    currentBankIndex >= 0 && currentBankIndex < allExercises.length - 1
+      ? allExercises[currentBankIndex + 1]
       : null;
+
+  // Helper to get human-readable expected answer of any step for Teacher Mode / Post-Completion Report
+  const getStepExpectedSummary = (st: typeof activeStep): string => {
+    if (st.inputType === 'choice' && st.choices) {
+      const found = st.choices.find(c => String(c.value) === String(st.expectedValue));
+      return found ? `${found.label} (${st.expectedValue})` : String(st.expectedValue ?? '');
+    }
+    if (st.inputType === 'number') {
+      return typeof st.expectedValue === 'number'
+        ? formatCoord(st.expectedValue)
+        : String(st.expectedValue ?? '');
+    }
+    if (st.inputType === 'coordinate' && st.expectedPoint) {
+      return formatPointCoord(st.expectedPoint);
+    }
+    if (st.inputType === 'canvas_drag_point' && st.expectedPoint) {
+      return `M${formatPointCoord(st.expectedPoint)}`;
+    }
+    if (st.inputType === 'canvas_half_plane') {
+      return st.expectedHalfPlaneSide === 'with_test'
+        ? 'Nửa mặt phẳng CHỨA điểm thử'
+        : 'Nửa mặt phẳng KHÔNG chứa điểm thử';
+    }
+    if (st.inputType === 'canvas_boundary' && exercise.mathData.inequality) {
+      const ineq = exercise.mathData.inequality;
+      return `Hai điểm phân biệt thuộc bờ ${ineq.a}x + ${ineq.b}y = ${ineq.c}`;
+    }
+    return String(st.expectedValue ?? 'Hoàn thành tương tác');
+  };
+
+  // Teacher 1-click Auto-Fill Current Step or Entire Exercise
+  const handleTeacherAutoFillCurrentStep = () => {
+    if (activeStep.inputType === 'choice' && activeStep.expectedValue !== undefined) {
+      setChoiceValue(String(activeStep.expectedValue));
+    } else if (activeStep.inputType === 'number' && activeStep.expectedValue !== undefined) {
+      setNumberText(
+        typeof activeStep.expectedValue === 'number'
+          ? formatCoord(activeStep.expectedValue)
+          : String(activeStep.expectedValue)
+      );
+    } else if (activeStep.inputType === 'coordinate' && activeStep.expectedPoint) {
+      setCoordXText(formatCoord(activeStep.expectedPoint.x));
+      setCoordYText(formatCoord(activeStep.expectedPoint.y));
+    } else if (activeStep.inputType === 'canvas_drag_point' && activeStep.expectedPoint) {
+      setCanvasPointM(activeStep.expectedPoint);
+    } else if (activeStep.inputType === 'canvas_half_plane' && activeStep.expectedHalfPlaneSide) {
+      setCanvasHalfPlaneSide(activeStep.expectedHalfPlaneSide);
+    }
+  };
+
+  const handleTeacherVerifyAllSteps = () => {
+    const allStepIndices = exercise.steps.map(s => s.stepIndex);
+    setCompletedSteps(new Set(allStepIndices));
+    setUnlockedHintTier(3);
+    const records: StepAttemptRecord[] = exercise.steps.map(st => ({
+      stepIndex: st.stepIndex,
+      studentAnswerRaw: getStepExpectedSummary(st),
+      isCorrect: true,
+      attemptsCount: 1,
+      hintsUsed: 0,
+      errorCodesTriggered: [],
+      timestamp: Date.now()
+    }));
+    setStepRecords(records);
+    setIsExerciseFinished(true);
+    setLastFeedback({
+      isCorrect: true,
+      feedbackTitle: '[Chế độ Giáo viên] Đã kiểm tra & xác nhận toàn bộ các bước!',
+      socraticMessage: `Đáp án chuẩn của bài ${exercise.id}: ${exercise.canonicalAnswerSummary}`,
+      detectedErrorCodes: []
+    });
+  };
 
   // Suggest remedial exercise if errors occurred
   const suggestedRemedialExercise = useMemo(() => {
@@ -851,9 +930,9 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
             )}
           </div>
 
-          {/* Socratic Opti Assistant Card (3 Hint Tiers + Post-Exercise Insight) */}
+          {/* Socratic Opti Assistant Card (Role-specific for Student vs Teacher) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <OptiMascot
                   expression={
@@ -867,11 +946,26 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
                   animate={false}
                 />
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">
-                    Trợ lý Socratic Opti
-                  </h4>
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-xs font-extrabold text-slate-900">
+                      {isTeacherMode
+                        ? 'Opti AI • Trợ Giảng Giáo Viên'
+                        : 'Opti AI • Hướng Dẫn Học Sinh'}
+                    </h4>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isTeacherMode
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                      }`}
+                    >
+                      {isTeacherMode ? 'Chế độ Giáo viên' : 'Chế độ Học sinh'}
+                    </span>
+                  </div>
                   <p className="text-[11px] text-slate-500">
-                    Gợi mở từng bước · Không tiết lộ đáp án sẵn
+                    {isTeacherMode
+                      ? 'Hiển thị toàn bộ đáp án chuẩn & Kiểm tra nhanh Đúng/Sai từng bước'
+                      : 'Chỉ dẫn phương pháp từng bước • Chấm Đúng/Sai tổng thể khi hoàn thành đủ các bước'}
                   </p>
                 </div>
               </div>
@@ -896,6 +990,99 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
                 </span>
               </button>
             </div>
+
+            {/* Step-by-Step Method Guide for Current Step (Always active for Student & Teacher) */}
+            <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs space-y-1">
+              <div className="font-bold text-blue-950 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span>
+                  Hướng dẫn làm Bước {activeStep.stepIndex}/{exercise.steps.length} ({activeStep.title}):
+                </span>
+              </div>
+              <p className="text-slate-700 leading-relaxed">
+                {activeStep.instruction}{' '}
+                {!isExerciseFinished && !isTeacherMode && (
+                  <span className="text-indigo-700 font-semibold">
+                    (Sau khi hoàn thành tất cả {exercise.steps.length} bước, AI Opti sẽ tổng hợp bảng chấm Đúng/Sai và đáp án chi tiết).
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* TEACHER MODE ONLY: Instant Answer Key & Step Verification Controls */}
+            {isTeacherMode && (
+              <div className="p-3.5 rounded-xl bg-gradient-to-br from-purple-50 via-amber-50/50 to-indigo-50 border border-purple-200 space-y-2.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-extrabold text-purple-950 flex items-center gap-1.5">
+                    <Presentation className="w-4 h-4 text-purple-700" />
+                    <span>Bảng Đáp Án & Kiểm Tra Nhanh Dành Cho Giáo Viên</span>
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleTeacherAutoFillCurrentStep}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-purple-300 hover:bg-purple-100 text-purple-900 font-bold text-[11px] transition cursor-pointer"
+                    >
+                      Điền đáp án Bước {activeStep.stepIndex}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTeacherVerifyAllSteps}
+                      className="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-800 text-white font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Kiểm tra & Duyệt đúng cả bài</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {exercise.steps.map(st => {
+                    const isStepDone = completedSteps.has(st.stepIndex);
+                    const rec = stepRecords.find(r => r.stepIndex === st.stepIndex);
+                    return (
+                      <div
+                        key={st.stepIndex}
+                        className="p-2 rounded-lg bg-white/90 border border-purple-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                      >
+                        <div>
+                          <span className="font-bold text-purple-900">
+                            Bước {st.stepIndex} ({st.title}):{' '}
+                          </span>
+                          <span className="font-mono font-bold text-emerald-800">
+                            {getStepExpectedSummary(st)}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded w-fit ${
+                            isStepDone
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : rec && !rec.isCorrect
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {isStepDone
+                            ? '✓ Đã kiểm tra: ĐÚNG'
+                            : rec && !rec.isCorrect
+                            ? `✗ Đang làm sai (${rec.studentAnswerRaw})`
+                            : 'Chưa chấm'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-white/90 border border-purple-200 text-[11px] space-y-1">
+                  <div className="font-bold text-slate-900">
+                    • Đáp án tổng hợp: <span className="text-emerald-800">{exercise.canonicalAnswerSummary}</span>
+                  </div>
+                  <div className="text-slate-600 leading-relaxed">
+                    • Giải thích chuẩn SGK: {exercise.solutionExplanation}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 3 Progressive Hint Tiers */}
             {unlockedHintTier >= 1 && (
@@ -927,20 +1114,45 @@ export const InteractiveExercisePlayer: React.FC<InteractiveExercisePlayerProps>
               </div>
             )}
 
-            {/* Complete Solution & Next Challenge Card (Only shown AFTER all steps are verified) */}
+            {/* Complete Solution & Post-Completion AI Audit Card (Only shown AFTER all steps are verified) */}
             {isExerciseFinished && (
-              <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-3 text-xs">
+              <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 space-y-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                  <span className="font-extrabold text-emerald-950 flex items-center gap-1.5">
                     <BookOpen className="w-4 h-4 text-emerald-600" />
-                    <span>Bản chất Toán học & Lời giải chuẩn SGK</span>
+                    <span>Báo Cáo AI Opti Kiểm Tra Đúng/Sai & Lời Giải Chuẩn SGK</span>
                   </span>
-                  <span className="font-mono font-bold text-emerald-800">
-                    Hoàn thành 100%
+                  <span className="font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[11px]">
+                    Hoàn thành {exercise.steps.length}/{exercise.steps.length} bước
                   </span>
                 </div>
 
-                <p className="text-slate-800 font-semibold">
+                {/* Step-by-step verification breakdown */}
+                <div className="space-y-1.5">
+                  {exercise.steps.map(st => {
+                    const rec = stepRecords.find(r => r.stepIndex === st.stepIndex);
+                    return (
+                      <div
+                        key={st.stepIndex}
+                        className="p-2 rounded-lg bg-white border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                      >
+                        <div>
+                          <span className="font-bold text-slate-800">
+                            Bước {st.stepIndex} ({st.title}):{' '}
+                          </span>
+                          <span className="font-mono text-emerald-800 font-semibold">
+                            {rec?.studentAnswerRaw || getStepExpectedSummary(st)}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-emerald-700">
+                          ✓ ĐÚNG ({rec?.attemptsCount || 1} lần thử)
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-slate-800 font-semibold pt-1">
                   Đáp án chuẩn: {exercise.canonicalAnswerSummary}
                 </p>
                 <p className="text-slate-700 leading-relaxed">

@@ -1,21 +1,32 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Inequality, LearningMode, OptiExpression, Point2D, ShadingMode } from '../types/math';
-import { evaluatePointWithSteps, formatBoundaryLine, formatInequality } from '../math/mathEngine';
+import {
+  evaluatePointWithSteps,
+  formatBoundaryLine,
+  formatExplicitSubstitution,
+  formatInequality,
+  formatNumberClean,
+  getOperatorSymbol,
+} from '../math/mathEngine';
 import { OptiActionState } from '../mascot/OptiMascot';
 import { GraphCanvas } from '../graph/GraphCanvas';
 import { ControlPanel } from './ControlPanel';
 import { ExplanationPanel } from './ExplanationPanel';
 import { OptiDialogue } from '../mascot/OptiDialogue';
 import { SevenStepWizard } from './SevenStepWizard/SevenStepWizard';
-import { Sparkles, GraduationCap, Compass, Presentation, Sliders, Eye } from 'lucide-react';
+import { Sparkles, GraduationCap, Compass, Presentation, Sliders, Eye, Lock } from 'lucide-react';
 
 interface SingleInequalityLabProps {
   initialLearningMode?: LearningMode;
+  isTeacherUnlocked?: boolean;
+  onRequestTeacherAuth?: (onUnlocked: () => void) => void;
   onBackToHome: () => void;
 }
 
 export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
   initialLearningMode = 'guided',
+  isTeacherUnlocked = false,
+  onRequestTeacherAuth,
   onBackToHome
 }) => {
   // Inequality state: Default is 2x + y <= 6 as mandated by prompt
@@ -34,7 +45,25 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
   const [shadingMode, setShadingMode] = useState<ShadingMode>('solution');
 
   // Learning mode: 'practice' | 'guided' | 'teacher'
-  const [learningMode, setLearningMode] = useState<LearningMode>(initialLearningMode);
+  const [learningMode, setLearningMode] = useState<LearningMode>(
+    initialLearningMode === 'teacher' && !isTeacherUnlocked ? 'guided' : initialLearningMode
+  );
+
+  useEffect(() => {
+    if (!isTeacherUnlocked && learningMode === 'teacher') {
+      setLearningMode('guided');
+    }
+  }, [isTeacherUnlocked, learningMode]);
+
+  const handleModeChange = (mode: LearningMode) => {
+    if (mode === 'teacher' && !isTeacherUnlocked) {
+      if (onRequestTeacherAuth) {
+        onRequestTeacherAuth(() => setLearningMode('teacher'));
+      }
+      return;
+    }
+    setLearningMode(mode);
+  };
 
   // Mobile view tab in Free Practice mode: 'all' | 'graph' | 'controls'
   const [mobileFreeTab, setMobileFreeTab] = useState<'all' | 'graph' | 'controls'>('all');
@@ -54,12 +83,16 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
   const optiState = useMemo(() => {
     const isOrigin = pointM.x === 0 && pointM.y === 0;
     const isThroughOrigin = Math.abs(inequality.c) < 1e-6;
+    const opSym = getOperatorSymbol(inequality.op);
+    const strMx = formatNumberClean(pointM.x);
+    const strMy = formatNumberClean(pointM.y);
 
     if (learningMode === 'guided') {
       const testPointName = isThroughOrigin ? 'P(1; 0)' : 'O(0; 0)';
       const testX = isThroughOrigin ? 1 : 0;
       const testY = isThroughOrigin ? 0 : 0;
-      const testVal = inequality.a * testX + inequality.b * testY;
+      const testSub = formatExplicitSubstitution(inequality.a, inequality.b, testX, testY);
+      const testVal = testSub.totalLhs;
       const testSatisfies =
         inequality.op === '<=' ? testVal <= inequality.c :
         inequality.op === '<' ? testVal < inequality.c :
@@ -67,7 +100,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
 
       const guidedSteps = [
         {
-          text: `Chào bạn! Mình là Opti. Ta cùng học cách biểu diễn miền nghiệm của ${formatInequality(inequality)}. Bước 1: Quan sát đường thẳng bờ d: ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)}. Nó chia mặt phẳng thành 2 nửa! Dấu "${inequality.op}" quy định vẽ nét ${inequality.op === '<=' || inequality.op === '>=' ? 'liền (lấy bờ)' : 'đứt (không lấy bờ)'}.`,
+          text: `Chào bạn! Mình là Opti. Ta cùng học cách biểu diễn miền nghiệm của ${formatInequality(inequality)}. Bước 1: Quan sát đường thẳng bờ d: ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)}. Nó chia mặt phẳng thành 2 nửa! Dấu "${opSym}" quy định vẽ nét ${inequality.op === '<=' || inequality.op === '>=' ? 'liền (lấy bờ)' : 'đứt (không lấy bờ)'}.`,
           expression: 'happy' as OptiExpression,
           theme: 'blue' as const,
           badge: 'Bước 1: Vẽ bờ',
@@ -83,7 +116,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
           actionState: 'think' as const
         },
         {
-          text: `Bước 3: Thay ${testPointName} vào vế trái: ${inequality.a}·(${testX}) + ${inequality.b}·(${testY}) = ${testVal} ${inequality.op} ${inequality.c}. Mệnh đề này là ${testSatisfies ? 'ĐÚNG' : 'SAI'}!`,
+          text: `Bước 3: Thay ${testPointName} vào vế trái: ${testSub.exprWithMul} = ${formatNumberClean(testVal)} ${opSym} ${inequality.c}. Mệnh đề này là ${testSatisfies ? 'ĐÚNG' : 'SAI'}!`,
           expression: 'cheering' as OptiExpression,
           theme: 'purple' as const,
           badge: 'Bước 3: Tính toán & so sánh',
@@ -102,10 +135,10 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
 
     if (learningMode === 'teacher') {
       return {
-        text: `[Chế độ Giáo viên]: Đường thẳng bờ d: ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)} (${inequality.op === '<=' || inequality.op === '>=' ? 'Nét liền' : 'Nét đứt'}). ${isThroughOrigin ? 'Lưu ý sư phạm: c = 0 nên đường thẳng qua gốc O(0;0), hướng dẫn học sinh chọn điểm thử trên trục toạ độ như (1;0) hoặc (0;1).' : 'Gợi mở: Cho học sinh dự đoán điểm O(0;0) trước khi kéo thả.'}`,
+        text: `[AI Trợ Giảng GV]: Đường thẳng bờ d: ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)} (${inequality.op === '<=' || inequality.op === '>=' ? 'Nét liền' : 'Nét đứt'}). Điểm M(${strMx}; ${strMy}) hiện có Vế trái = ${formatNumberClean(evalResult.lhsValue)} ${opSym} ${inequality.c} → Kết quả: ${evalResult.satisfies ? 'ĐÚNG (Thuộc miền nghiệm)' : 'SAI (Không thuộc miền nghiệm)'}.`,
         expression: 'thinking' as OptiExpression,
         theme: 'purple' as const,
-        badge: 'Gợi ý sư phạm',
+        badge: 'Gợi ý sư phạm & Đáp án GV',
         actionState: 'think' as const
       };
     }
@@ -124,7 +157,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
     // Special Case B: point is on boundary but strict inequality (< or >)
     if (evalResult.relation === 'on_boundary' && !evalResult.satisfies) {
       return {
-        text: `Chú ý quan trọng: Điểm M(${pointM.x}; ${pointM.y}) nằm ngay trên đường thẳng bờ ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)}. Vì bất phương trình mang dấu so sánh nghiêm ngặt "${inequality.op}" (vẽ bằng nét đứt), nên đường biên KHÔNG thuộc miền nghiệm!`,
+        text: `Chú ý quan trọng: Điểm M(${strMx}; ${strMy}) nằm ngay trên đường thẳng bờ ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)}. Vì bất phương trình mang dấu so sánh nghiêm ngặt "${opSym}" (vẽ bằng nét đứt), nên đường biên KHÔNG thuộc miền nghiệm!`,
         expression: 'thinking' as OptiExpression,
         theme: 'orange' as const,
         badge: 'Điểm trên biên nét đứt',
@@ -135,7 +168,7 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
     // Point on boundary with inclusive inequality (<= or >=)
     if (evalResult.relation === 'on_boundary' && evalResult.satisfies) {
       return {
-        text: `Chính xác! Điểm M(${pointM.x}; ${pointM.y}) nằm trên đường biên ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)}. Do bất phương trình có dấu "${inequality.op}" (vẽ bằng nét liền), đường biên này thuộc miền nghiệm!`,
+        text: `Chính xác! Điểm M(${strMx}; ${strMy}) nằm trên đường biên ${formatBoundaryLine(inequality.a, inequality.b, inequality.c)}. Do bất phương trình có dấu "${opSym}" (vẽ bằng nét liền), đường biên này thuộc miền nghiệm!`,
         expression: 'wink' as OptiExpression,
         theme: 'blue' as const,
         badge: 'Điểm trên đường biên nét liền',
@@ -154,21 +187,23 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
       };
     }
 
+    const pointSub = formatExplicitSubstitution(inequality.a, inequality.b, pointM.x, pointM.y);
+
     // General Point Satisfies
     if (evalResult.satisfies) {
       return {
-        text: `Bạn làm rất tốt! Điểm M(${pointM.x}; ${pointM.y}) thỏa mãn: ${inequality.a}·(${pointM.x}) + ${inequality.b}·(${pointM.y}) = ${evalResult.lhsValue} ${inequality.op} ${inequality.c}. Nửa mặt phẳng chứa M là miền nghiệm!`,
+        text: `Hướng dẫn kiểm chứng: Thay M(${strMx}; ${strMy}) vào vế trái ta được ${pointSub.exprWithMul} = ${formatNumberClean(evalResult.lhsValue)} ${opSym} ${inequality.c} (Mệnh đề ĐÚNG). Vậy nửa mặt phẳng chứa M thuộc miền nghiệm!`,
         expression: 'happy' as OptiExpression,
         theme: 'green' as const,
-        badge: 'Nghiệm chính xác',
+        badge: 'Hướng dẫn kiểm tra M(x;y)',
         actionState: 'nod' as const
       };
     } else {
       return {
-        text: `Không sao cả! Điểm M(${pointM.x}; ${pointM.y}) cho ra kết quả ${evalResult.lhsValue}, không thỏa mãn ${inequality.op} ${inequality.c}. Nhờ đó ta xác nhận nửa mặt phẳng chứa M không phải miền nghiệm. Sai là một phần của học tập.`,
+        text: `Hướng dẫn phân tích: Thay M(${strMx}; ${strMy}) vào vế trái ta được ${pointSub.exprWithMul} = ${formatNumberClean(evalResult.lhsValue)}, không thỏa mãn dấu "${opSym} ${inequality.c}" (Mệnh đề SAI). Nhờ đó ta suy ra nửa mặt phẳng chứa M không phải miền nghiệm!`,
         expression: 'sad' as OptiExpression,
         theme: 'orange' as const,
-        badge: 'Phân tích điểm thử',
+        badge: 'Phân tích điểm thử M(x;y)',
         actionState: 'think' as const
       };
     }
@@ -256,14 +291,19 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
 
             <button
               type="button"
-              onClick={() => setLearningMode('teacher')}
+              onClick={() => handleModeChange('teacher')}
               className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[36px] cursor-pointer ${
                 learningMode === 'teacher'
                   ? 'bg-white text-purple-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
+              title={isTeacherUnlocked ? 'Chế độ Giáo viên (Đã mở khóa)' : 'Nhập mật khẩu để vào Chế độ Giáo viên'}
             >
-              <Presentation className="w-3.5 h-3.5 text-purple-600" />
+              {isTeacherUnlocked ? (
+                <Presentation className="w-3.5 h-3.5 text-purple-600" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+              )}
               <span className="hidden sm:inline">Giáo viên</span>
             </button>
           </div>
@@ -276,8 +316,8 @@ export const SingleInequalityLab: React.FC<SingleInequalityLabProps> = ({
           <SevenStepWizard
             initialInequality={inequality}
             learningMode={learningMode}
-            onLearningModeChange={setLearningMode}
-            onSwitchToSandbox={() => setLearningMode('practice')}
+            onLearningModeChange={handleModeChange}
+            onSwitchToSandbox={() => handleModeChange('practice')}
           />
         ) : (
           <>

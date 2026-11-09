@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { LearningMode, Point2D, RealWorldScenario } from '../../types/math';
 import { REAL_WORLD_SCENARIOS, solveLinearProgramming } from '../../math/optimizationMathEngine';
 import { formatCoord } from '../../math/systemMathEngine';
@@ -15,19 +15,44 @@ import {
   SlidersHorizontal,
   Settings,
   Calculator,
-  Eye
+  Eye,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 
 interface OptimizationLabProps {
   initialLearningMode?: LearningMode;
+  isTeacherUnlocked?: boolean;
+  onRequestTeacherAuth?: (onUnlocked: () => void) => void;
   onBackToHome: () => void;
 }
 
 export const OptimizationLab: React.FC<OptimizationLabProps> = ({
   initialLearningMode = 'guided',
+  isTeacherUnlocked = false,
+  onRequestTeacherAuth,
   onBackToHome
 }) => {
-  const [learningMode, setLearningMode] = useState<LearningMode>(initialLearningMode);
+  const [learningMode, setLearningMode] = useState<LearningMode>(
+    initialLearningMode === 'teacher' && !isTeacherUnlocked ? 'guided' : initialLearningMode
+  );
+  const [teacherSubView, setTeacherSubView] = useState<'wizard' | 'sandbox'>('wizard');
+
+  useEffect(() => {
+    if (!isTeacherUnlocked && learningMode === 'teacher') {
+      setLearningMode('guided');
+    }
+  }, [isTeacherUnlocked, learningMode]);
+
+  const handleModeChange = (mode: LearningMode) => {
+    if (mode === 'teacher' && !isTeacherUnlocked) {
+      if (onRequestTeacherAuth) {
+        onRequestTeacherAuth(() => setLearningMode('teacher'));
+      }
+      return;
+    }
+    setLearningMode(mode);
+  };
 
   // Active scenario (Default: Bài 1 - Sản xuất A và B kinh điển SGK)
   const [scenario, setScenario] = useState<RealWorldScenario>(REAL_WORLD_SCENARIOS[0]);
@@ -113,7 +138,7 @@ export const OptimizationLab: React.FC<OptimizationLabProps> = ({
             <div className="flex items-center gap-1 bg-slate-100 p-0.5 sm:p-1 rounded-xl border border-slate-200">
               <button
                 type="button"
-                onClick={() => setLearningMode('guided')}
+                onClick={() => handleModeChange('guided')}
                 className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[34px] cursor-pointer ${
                   learningMode === 'guided'
                     ? 'bg-purple-600 text-white shadow-xs'
@@ -126,7 +151,7 @@ export const OptimizationLab: React.FC<OptimizationLabProps> = ({
 
               <button
                 type="button"
-                onClick={() => setLearningMode('practice')}
+                onClick={() => handleModeChange('practice')}
                 className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[34px] cursor-pointer ${
                   learningMode === 'practice'
                     ? 'bg-white text-purple-800 shadow-xs'
@@ -139,14 +164,19 @@ export const OptimizationLab: React.FC<OptimizationLabProps> = ({
 
               <button
                 type="button"
-                onClick={() => setLearningMode('teacher')}
+                onClick={() => handleModeChange('teacher')}
                 className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all min-h-[34px] cursor-pointer ${
                   learningMode === 'teacher'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
+                title={isTeacherUnlocked ? 'Chế độ Giáo viên (Đã mở khóa)' : 'Nhập mật khẩu để vào Chế độ Giáo viên'}
               >
-                <Presentation className="w-3.5 h-3.5" />
+                {isTeacherUnlocked ? (
+                  <Presentation className="w-3.5 h-3.5" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                )}
                 <span className="hidden sm:inline">Giáo viên</span>
               </button>
             </div>
@@ -156,18 +186,48 @@ export const OptimizationLab: React.FC<OptimizationLabProps> = ({
 
       {/* Main Content Workspace */}
       <div className="max-w-7xl mx-auto p-2.5 sm:p-4 md:p-6 w-full flex-1 flex flex-col gap-3 sm:gap-5">
-        {/* MODE 1: 7-STEP GUIDED WORKFLOW */}
-        {learningMode === 'guided' && (
+        {learningMode === 'teacher' && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-indigo-900">
+              <Sparkles className="w-4 h-4 text-indigo-600" />
+              <span>Chế độ Giáo viên (Module 4): Kiểm tra Đúng/Sai 7 bước & Đáp án tối ưu hóa</span>
+            </div>
+            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-indigo-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setTeacherSubView('wizard')}
+                className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  teacherSubView === 'wizard' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Chấm & Giải 7 Bước
+              </button>
+              <button
+                type="button"
+                onClick={() => setTeacherSubView('sandbox')}
+                className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  teacherSubView === 'sandbox' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Bàn Trình Chiếu Đồ Thị
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* MODE 1: 7-STEP GUIDED WORKFLOW (Or Teacher Wizard View) */}
+        {(learningMode === 'guided' || (learningMode === 'teacher' && teacherSubView === 'wizard')) && (
           <OptimizationSevenStepWizard
             scenario={scenario}
             result={result}
+            learningMode={learningMode}
             onSelectScenario={handleSelectScenario}
-            onSwitchToSandbox={() => setLearningMode('practice')}
+            onSwitchToSandbox={() => handleModeChange('practice')}
           />
         )}
 
-        {/* MODE 2 & 3: FREE SANDBOX & TEACHER MODE */}
-        {(learningMode === 'practice' || learningMode === 'teacher') && (
+        {/* MODE 2 & 3: FREE SANDBOX & TEACHER SANDBOX MODE */}
+        {(learningMode === 'practice' || (learningMode === 'teacher' && teacherSubView === 'sandbox')) && (
           <div className="flex flex-col gap-4">
             {/* Teacher Controls Bar */}
             {learningMode === 'teacher' && (
