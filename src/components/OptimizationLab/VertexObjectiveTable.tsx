@@ -109,17 +109,34 @@ export const VertexObjectiveTable: React.FC<VertexObjectiveTableProps> = ({
       ...prev,
       [ve.label]: checkResult
     }));
+    onHighlightVertex?.(ve.vertex);
+    if (checkResult.isCorrect) {
+      onSelectKValue?.(ve.value);
+    }
   };
 
   const handleVerifyAllEntered = () => {
     const nextVerified: Record<string, { isCorrect: boolean; message: string }> = {
       ...verifiedVertices
     };
+    let lastCorrectVe: VertexEvaluation | null = null;
     for (const ve of vertexEvaluations) {
       const inputStr = studentInputs[ve.label] || '';
-      nextVerified[ve.label] = verifySingleVertex(ve, inputStr);
+      const res = verifySingleVertex(ve, inputStr);
+      nextVerified[ve.label] = res;
+      if (res.isCorrect) {
+        lastCorrectVe = ve;
+      }
     }
     setVerifiedVertices(nextVerified);
+    const optVe = vertexEvaluations.find(ve => ve.isOptimal);
+    if (optVe && nextVerified[optVe.label]?.isCorrect) {
+      onHighlightVertex?.(optVe.vertex);
+      onSelectKValue?.(optVe.value);
+    } else if (lastCorrectVe) {
+      onHighlightVertex?.(lastCorrectVe.vertex);
+      onSelectKValue?.(lastCorrectVe.value);
+    }
   };
 
   const handleRevealSolution = () => {
@@ -137,6 +154,11 @@ export const VertexObjectiveTable: React.FC<VertexObjectiveTableProps> = ({
     setStudentInputs(inputs);
     setVerifiedVertices(verified);
     setShowSolution(true);
+    const optVe = vertexEvaluations.find(ve => ve.isOptimal);
+    if (optVe) {
+      onHighlightVertex?.(optVe.vertex);
+      onSelectKValue?.(optVe.value);
+    }
   };
 
   const handleResetTable = () => {

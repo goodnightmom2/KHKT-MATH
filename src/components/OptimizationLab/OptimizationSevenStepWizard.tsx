@@ -68,6 +68,9 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
   const [step2IntegerChoice, setStep2IntegerChoice] = useState<boolean | null>(null);
   const [step2Feedback, setStep2Feedback] = useState<{ isCorrect: boolean; message: string } | null>(null);
 
+  // Step 3: Focused constraint index on graph
+  const [focusedConstraintIdx, setFocusedConstraintIdx] = useState<number | null>(null);
+
   // Step 5: Selected vertex candidate
   const [highlightVertex, setHighlightVertex] = useState<Point2D | null>(null);
 
@@ -78,6 +81,7 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
 
   // Opti Voice & Hints
   const [optiHintTier, setOptiHintTier] = useState<1 | 2 | 3>(1);
+  const [rightPanelHintTier, setRightPanelHintTier] = useState<1 | 2 | 3>(1);
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
@@ -95,12 +99,42 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
     setStep1Feedback(null);
     setStep2IntegerChoice(null);
     setStep2Feedback(null);
+    setFocusedConstraintIdx(null);
     setHighlightVertex(null);
     setPredictedOptVertex(null);
     setStep6Feedback(null);
     setTableAllVerified(false);
+    setRightPanelHintTier(1);
     setKValue(result.optimalValue !== null ? Math.round(result.optimalValue * 0.65) : 50);
   }, [scenario.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Synchronize graph state whenever currentStep changes
+  useEffect(() => {
+    setRightPanelHintTier(1);
+    if (currentStep !== 3) {
+      setFocusedConstraintIdx(null);
+    } else if (system.length > 0) {
+      setFocusedConstraintIdx(0);
+    }
+
+    if (currentStep === 5 && vertexEvaluations.length > 0) {
+      const nonOrigin = vertexEvaluations.find(ve => Math.hypot(ve.vertex.x, ve.vertex.y) > 1e-3) || vertexEvaluations[0];
+      setHighlightVertex(nonOrigin.vertex);
+    } else if (currentStep === 6) {
+      if (optimalValue !== null && !completedSteps.has(6)) {
+        setKValue(Math.round(optimalValue * 0.65 * 10) / 10);
+      }
+    } else if (currentStep === 7) {
+      if (optimalValue !== null) {
+        setKValue(optimalValue);
+      }
+      if (optimalPoints.length > 0) {
+        setHighlightVertex(optimalPoints[0]);
+      }
+    } else if (currentStep <= 4) {
+      setHighlightVertex(null);
+    }
+  }, [currentStep, scenario.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Navigation handlers
   const handleNextStep = () => {
@@ -115,7 +149,7 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
     }
   };
 
-  // STEP 1: Verify reading comprehension
+  // STEP 1: Verify reading comprehension & auto-advance graph + step
   const handleVerifyStep1 = () => {
     if (!step1GoalChoice) {
       setStep1Feedback({ isCorrect: false, message: 'Vui lòng chọn mục tiêu của bài toán (MAX hay MIN)!' });
@@ -125,19 +159,23 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
     if (isCorrect) {
       setStep1Feedback({
         isCorrect: true,
-        message: `Chính xác! Bài toán yêu cầu ${objective.goal === 'max' ? 'tối đa hóa (MAX)' : 'tối thiểu hóa (MIN)'} ${objective.name.toLowerCase()} ${objective.label}.`
+        message: `Chính xác! Bài toán yêu cầu ${objective.goal === 'max' ? 'tối đa hóa (MAX)' : 'tối thiểu hóa (MIN)'} ${objective.name.toLowerCase()} ${objective.label}. Đang chuyển sang Bước 2...`
       });
       setCompletedSteps(prev => new Set(prev).add(1));
       confetti({ particleCount: 30, spread: 50, origin: { y: 0.7 } });
+      setTimeout(() => {
+        setCurrentStep(prev => (prev === 1 ? 2 : prev));
+      }, 750);
     } else {
       setStep1Feedback({
         isCorrect: false,
-        message: `Chưa đúng! Bài toán yêu cầu ${objective.name} phải đạt ${objective.goal === 'max' ? 'lớn nhất (MAX)' : 'nhỏ nhất (MIN)'}. Hãy thử lại!`
+        message: `Chưa đúng! Bài toán yêu cầu ${objective.name} phải đạt ${objective.goal === 'max' ? 'lớn nhất (MAX)' : 'nhỏ nhất (MIN)'}. Xem gợi ý từ Trợ Lý AI Opti bên phải nhé!`
       });
+      setRightPanelHintTier(2);
     }
   };
 
-  // STEP 2: Verify variable condition
+  // STEP 2: Verify variable condition & auto-advance graph + step
   const handleVerifyStep2 = () => {
     if (step2IntegerChoice === null) {
       setStep2Feedback({ isCorrect: false, message: 'Vui lòng chọn xem bài toán có yêu cầu số nguyên hay không!' });
@@ -148,11 +186,14 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
       setStep2Feedback({
         isCorrect: true,
         message: scenario.integerRequired
-          ? 'Chính xác! Do sản phẩm/xe là vật thể nguyên chiếc nên điều kiện biến thực tế là x, y ∈ ℕ (số tự nhiên).'
-          : 'Chính xác! Do khối lượng/thời gian/diện tích có thể chia nhỏ nên biến số nhận giá trị thực x, y ≥ 0.'
+          ? 'Chính xác! Do sản phẩm/xe là vật thể nguyên chiếc nên điều kiện biến thực tế là x, y ∈ ℕ (số tự nhiên). Đang chuyển sang Bước 3...'
+          : 'Chính xác! Do khối lượng/thời gian/diện tích có thể chia nhỏ nên biến số nhận giá trị thực x, y ≥ 0. Đang chuyển sang Bước 3...'
       });
       setCompletedSteps(prev => new Set(prev).add(2));
       confetti({ particleCount: 35, spread: 55, origin: { y: 0.7 } });
+      setTimeout(() => {
+        setCurrentStep(prev => (prev === 2 ? 3 : prev));
+      }, 750);
     } else {
       setStep2Feedback({
         isCorrect: false,
@@ -160,12 +201,14 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
           ? 'Chưa chính xác! Sản phẩm hay phương tiện giao thông không thể sản xuất hay thuê lẻ chiếc, nên x, y phải là số nguyên!'
           : 'Chưa chính xác! Thời gian học hoặc khối lượng thức ăn có thể lẻ (ví dụ 3.6 kg hoặc 1.5 giờ), nên không bắt buộc phải là số nguyên.'
       });
+      setRightPanelHintTier(2);
     }
   };
 
   // STEP 3: Verify constraints
   const handleVerifyStep3 = () => {
     setCompletedSteps(prev => new Set(prev).add(3));
+    setCurrentStep(4);
     confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 } });
   };
 
@@ -183,7 +226,7 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
     confetti({ particleCount: 45, spread: 65, origin: { y: 0.7 } });
   };
 
-  // STEP 6: Verify student predicted optimal vertex
+  // STEP 6: Verify student predicted optimal vertex & auto-sync graph
   const handleVerifyStep6 = () => {
     if (!predictedOptVertex) {
       setStep6Feedback({ isCorrect: false, message: 'Vui lòng chọn một đỉnh ứng viên mà bạn dự đoán là tối ưu!' });
@@ -193,6 +236,11 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
     const optVertexLabels = vertexEvaluations.filter(ve => ve.isOptimal).map(ve => ve.label);
     const isCorrect = optVertexLabels.includes(predictedOptVertex);
     const selectedVe = vertexEvaluations.find(ve => ve.label === predictedOptVertex);
+
+    if (selectedVe) {
+      setHighlightVertex(selectedVe.vertex);
+      setKValue(selectedVe.value);
+    }
 
     if (isCorrect && selectedVe) {
       const valFormatted = optimalValue !== null ? formatValueWithApprox(optimalValue) : '';
@@ -204,20 +252,24 @@ export const OptimizationSevenStepWizard: React.FC<OptimizationSevenStepWizardPr
           scenario.integerRequired && integerOptimalPoint && integerOptimalValue !== null
             ? ` Lưu ý: Với điều kiện nguyên (x, y ∈ ℕ), phương án nguyên tối ưu là (${integerOptimalPoint.x}; ${integerOptimalPoint.y}) với giá trị = ${formatValueWithApprox(integerOptimalValue)} ${objective.unit}.`
             : ''
-        }`
+        } Đang mở Bước 7 (Kết luận)...`
       });
       if (optimalValue !== null) {
         setKValue(optimalValue);
       }
       setCompletedSteps(prev => new Set(prev).add(6));
       confetti({ particleCount: 50, spread: 65, origin: { y: 0.7 } });
+      setTimeout(() => {
+        setCurrentStep(prev => (prev === 6 ? 7 : prev));
+      }, 950);
     } else {
       setStep6Feedback({
         isCorrect: false,
         message: `Chưa chính xác! Tại đỉnh ${predictedOptVertex}${
           selectedVe ? formatPointCoord(selectedVe.vertex) : ''
-        }, hàm mục tiêu chưa đạt cực trị. Hãy tự tính giá trị tại tất cả các đỉnh trong bảng bên dưới hoặc kéo thanh trượt đường mức k!`
+        } (F = ${selectedVe ? formatValueWithApprox(selectedVe.value) : ''}), hàm mục tiêu chưa đạt cực trị ${objective.goal.toUpperCase()}. Hãy xem hướng dẫn ở Trợ Lý AI Opti bên phải hoặc bấm "Phát" trên đồ thị!`
       });
+      setRightPanelHintTier(2);
     }
   };
 
@@ -834,25 +886,35 @@ ${result.practicalAnswer}`;
             {currentStep === 3 && (
               <div className="space-y-3.5">
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Chuyển hóa các nguồn lực thành <strong>hệ bất phương trình ràng buộc</strong> và phân biệt với <strong>phương trình đường biên</strong>:
+                  Chuyển hóa các nguồn lực thành <strong>hệ bất phương trình ràng buộc</strong> và phân biệt với <strong>phương trình đường biên</strong> (chạm vào từng ràng buộc để soi đường biên trên đồ thị):
                 </p>
 
                 <div className="flex flex-col gap-2">
-                  {system.map((ineq, idx) => (
-                    <div
-                      key={ineq.id}
-                      className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs flex-wrap gap-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ineq.color }} />
-                        <span className="font-mono font-bold text-slate-800">Ràng buộc ({idx + 1}):</span>
-                        <span className="font-mono font-extrabold text-purple-900">{formatInequality(ineq)}</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
-                        Đường biên {ineq.label ? ineq.label.split(':')[0].trim() : `(d${idx + 1})`}: {formatBoundaryLine(ineq.a, ineq.b, ineq.c)}
-                      </span>
-                    </div>
-                  ))}
+                  {system.map((ineq, idx) => {
+                    const isFocused = focusedConstraintIdx === idx;
+                    return (
+                      <button
+                        key={ineq.id}
+                        type="button"
+                        onMouseEnter={() => setFocusedConstraintIdx(idx)}
+                        onClick={() => setFocusedConstraintIdx(idx)}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs flex-wrap gap-2 text-left transition cursor-pointer ${
+                          isFocused
+                            ? 'bg-purple-50/90 border-purple-400 ring-1 ring-purple-300 shadow-2xs'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: ineq.color }} />
+                          <span className="font-mono font-bold text-slate-800">Ràng buộc ({idx + 1}):</span>
+                          <span className="font-mono font-extrabold text-purple-900">{formatInequality(ineq)}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200 font-semibold">
+                          Đường biên {ineq.label ? ineq.label.split(':')[0].trim() : `(d${idx + 1})`}: {formatBoundaryLine(ineq.a, ineq.b, ineq.c)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200 text-xs">
@@ -873,13 +935,10 @@ ${result.practicalAnswer}`;
 
                   <button
                     type="button"
-                    onClick={() => {
-                      handleVerifyStep3();
-                      handleNextStep();
-                    }}
+                    onClick={handleVerifyStep3}
                     className="flex items-center gap-1.5 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition min-h-[44px] cursor-pointer"
                   >
-                    <span>Kiểm tra & Sang Bước 4</span>
+                    <span>Kiểm chứng & Sang Bước 4</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -937,7 +996,7 @@ ${result.practicalAnswer}`;
                     onClick={handleVerifyStep4}
                     className="flex items-center gap-1.5 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition min-h-[44px] cursor-pointer"
                   >
-                    <span>Sang Bước 5 (Xác định các đỉnh)</span>
+                    <span>Kiểm chứng & Sang Bước 5 (Các đỉnh)</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -994,7 +1053,7 @@ ${result.practicalAnswer}`;
                     onClick={handleVerifyStep5}
                     className="flex items-center gap-1.5 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition min-h-[44px] cursor-pointer"
                   >
-                    <span>Sang Bước 6 (Tối ưu hóa)</span>
+                    <span>Kiểm chứng & Sang Bước 6 (Tối ưu hóa)</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1005,7 +1064,7 @@ ${result.practicalAnswer}`;
             {currentStep === 6 && (
               <div className="space-y-3.5">
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Tự tính giá trị hàm mục tiêu tại các đỉnh trong <strong>Bảng tính bên dưới</strong> hoặc kéo <strong>thanh trượt đường mức k</strong> trên đồ thị, sau đó dự đoán đỉnh đạt cực trị liên tục:
+                  Tự tính giá trị hàm mục tiêu tại các đỉnh trong <strong>Bảng tính bên dưới</strong> hoặc bấm nút <strong>Phát / Kéo thanh trượt k</strong> trên đồ thị, sau đó dự đoán đỉnh đạt cực trị liên tục:
                 </p>
 
                 <div className="space-y-2">
@@ -1020,6 +1079,7 @@ ${result.practicalAnswer}`;
                         onClick={() => {
                           setPredictedOptVertex(ve.label);
                           setHighlightVertex(ve.vertex);
+                          setKValue(ve.value);
                         }}
                         className={`p-2.5 rounded-xl border text-xs font-mono font-bold transition cursor-pointer text-center ${
                           predictedOptVertex === ve.label
@@ -1216,7 +1276,10 @@ ${result.practicalAnswer}`;
               result={result}
               kValue={kValue}
               onKValueChange={setKValue}
-              showLevelCurve={currentStep >= 4}
+              activeStep={currentStep}
+              stepVerified={completedSteps.has(currentStep)}
+              focusedConstraintIdx={focusedConstraintIdx}
+              showLevelCurve={currentStep >= 6}
               showIntegerPoints={scenario.integerRequired && currentStep >= 5}
               showOptimalPoint={canRevealOptimal}
               revealOptimalAnswers={canRevealOptimal}
@@ -1226,10 +1289,14 @@ ${result.practicalAnswer}`;
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Real-World Scenarios Bank & Mascot (xl: 3 cols) */}
-        <div className="hidden xl:flex xl:col-span-3 flex-col gap-3.5 order-3">
-          {/* Scenario Selector Bank */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs">
+        {/* RIGHT COLUMN: Real-World Scenarios Bank & Step-Aware AI Assistant (xl: 3 cols, also shown on mobile 'step'/'all') */}
+        <div
+          className={`xl:col-span-3 flex flex-col gap-3.5 order-3 ${
+            mobileStepView === 'step' || mobileStepView === 'all' ? 'flex' : 'hidden xl:flex'
+          }`}
+        >
+          {/* Scenario Selector Bank (Desktop) */}
+          <div className="hidden xl:block bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs">
             <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 mb-2">
               <BookOpen className="w-3.5 h-3.5 text-purple-600" />
               Ngân hàng 5 tình huống thực tế:
@@ -1259,13 +1326,199 @@ ${result.practicalAnswer}`;
             </div>
           </div>
 
-          {/* Quick Mascot Advice */}
-          <div className="bg-gradient-to-b from-purple-50/80 to-white rounded-2xl border border-purple-200 p-4 shadow-xs flex flex-col items-center text-center">
-            <OptiMascot expression="happy" actionState="nod" size={60} />
-            <div className="mt-2 font-bold text-sm text-purple-900">Trợ Lý Tối Ưu Opti</div>
-            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-              Hãy tự tính giá trị tại 4 đỉnh O, A, B, C ở bảng dưới hoặc kéo đường mức k để tìm đúng điểm tiếp xúc cuối cùng!
-            </p>
+          {/* Dynamic Step-Aware AI Assistant Card ("Trợ Lý Tối Ưu Opti") */}
+          <div className="bg-gradient-to-b from-purple-50/90 via-indigo-50/40 to-white rounded-2xl border border-purple-200 p-4 shadow-xs flex flex-col gap-3">
+            {/* Mascot & Step Badge Header */}
+            <div className="flex items-center gap-3">
+              <div className="shrink-0">
+                <OptiMascot
+                  expression={
+                    (currentStep === 1 && step1Feedback?.isCorrect === false) ||
+                    (currentStep === 2 && step2Feedback?.isCorrect === false) ||
+                    (currentStep === 6 && step6Feedback?.isCorrect === false)
+                      ? 'encouraging'
+                      : completedSteps.has(currentStep)
+                      ? 'excited'
+                      : 'happy'
+                  }
+                  actionState={completedSteps.has(currentStep) ? 'wave' : 'nod'}
+                  size={52}
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-extrabold text-sm text-purple-950">Trợ Lý Tối Ưu Opti</span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-600 text-white">
+                    Bước {currentStep}/7
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold text-indigo-800 mt-0.5 truncate">
+                  {OPTI_STEP_TITLES[currentStep - 1].title}
+                </div>
+              </div>
+            </div>
+
+            {/* Error Alert Box if Student Just Answered Wrong on Current Step */}
+            {((currentStep === 1 && step1Feedback?.isCorrect === false) ||
+              (currentStep === 2 && step2Feedback?.isCorrect === false) ||
+              (currentStep === 6 && step6Feedback?.isCorrect === false)) && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-[11px] leading-relaxed">
+                <div className="font-extrabold text-rose-800 mb-0.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>Gợi ý sửa lỗi Bước {currentStep}:</span>
+                </div>
+                {currentStep === 1 && (
+                  <span>
+                    Hãy đọc dòng cuối của đề bài: ta cần làm cho <strong>{objective.name.toLowerCase()}</strong> đạt{' '}
+                    <strong>{objective.goal === 'max' ? 'cao nhất / lớn nhất (MAX)' : 'thấp nhất / nhỏ nhất (MIN)'}</strong>.
+                  </span>
+                )}
+                {currentStep === 2 && (
+                  <span>
+                    Đại lượng <strong>{variables.x.name}</strong> ({variables.x.unit}) và <strong>{variables.y.name}</strong> ({variables.y.unit}){' '}
+                    {scenario.integerRequired
+                      ? 'là đồ vật/phương tiện nguyên chiếc không thể chia lẻ, nên bắt buộc chọn x, y ∈ ℕ.'
+                      : 'là đại lượng liên tục (có thể nhận số thập phân), nên chọn x, y ≥ 0.'}
+                  </span>
+                )}
+                {currentStep === 6 && (
+                  <span>
+                    Hãy thay tọa độ từng đỉnh vào công thức <code className="font-mono font-bold">{objective.label}</code> ở bảng bên dưới rồi so sánh xem đỉnh nào cho giá trị{' '}
+                    <strong>{objective.goal === 'max' ? 'LỚN NHẤT' : 'NHỎ NHẤT'}</strong>!
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Step-Specific Guidance Summary */}
+            <div className="p-3 rounded-xl bg-white border border-purple-100 text-xs text-slate-700 leading-relaxed space-y-1.5">
+              <div className="font-extrabold text-purple-900 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>Khi chưa biết làm Bước {currentStep}, hãy làm theo:</span>
+              </div>
+              <p className="text-[11px] text-slate-700 leading-relaxed">{optiGuidance.text}</p>
+            </div>
+
+            {/* 3-Tier Step-by-Step Hint Selector inside Right Panel */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-1 bg-purple-100/70 p-1 rounded-xl border border-purple-200">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelHintTier(1)}
+                  className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                    rightPanelHintTier === 1
+                      ? 'bg-purple-600 text-white shadow-2xs'
+                      : 'text-purple-900 hover:bg-white/60'
+                  }`}
+                >
+                  1. Định hướng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelHintTier(2)}
+                  className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                    rightPanelHintTier === 2
+                      ? 'bg-purple-600 text-white shadow-2xs'
+                      : 'text-purple-900 hover:bg-white/60'
+                  }`}
+                >
+                  2. Phương pháp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelHintTier(3)}
+                  className={`py-1.5 px-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                    rightPanelHintTier === 3
+                      ? 'bg-purple-600 text-white shadow-2xs'
+                      : 'text-purple-900 hover:bg-white/60'
+                  }`}
+                >
+                  3. Giải chi tiết
+                </button>
+              </div>
+
+              {/* Detailed Content for Selected Tier */}
+              <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80 text-[11px] text-indigo-950 leading-relaxed space-y-1.5">
+                {rightPanelHintTier === 1 && (
+                  <>
+                    <div className="font-bold text-indigo-900">💡 Gợi ý định hướng Bước {currentStep}:</div>
+                    <div>{optiGuidance.hints.tier1}</div>
+                  </>
+                )}
+                {rightPanelHintTier === 2 && (
+                  <>
+                    <div className="font-bold text-indigo-900">📐 Phương pháp giải Bước {currentStep}:</div>
+                    <div>{optiGuidance.hints.tier2}</div>
+                  </>
+                )}
+                {rightPanelHintTier === 3 && (
+                  <>
+                    <div className="font-bold text-indigo-900">✍️ Hướng dẫn giải cụ thể Bước {currentStep}:</div>
+                    <div>{optiGuidance.hints.tier3}</div>
+                    {currentStep === 3 && (
+                      <div className="pt-1 font-mono text-[10px] text-purple-900 bg-white/80 p-2 rounded-lg border border-indigo-100">
+                        {system.map((s, i) => (
+                          <div key={s.id}>• BPT {i + 1}: {formatInequality(s)}</div>
+                        ))}
+                      </div>
+                    )}
+                    {currentStep === 6 && (
+                      <div className="pt-1 font-mono text-[10px] text-purple-900 bg-white/80 p-2 rounded-lg border border-indigo-100 space-y-0.5">
+                        {vertexEvaluations.map(ve => (
+                          <div key={ve.label}>
+                            • Tại {ve.label}{formatPointCoord(ve.vertex)}: F = {formatValueWithApprox(ve.value)} {ve.isOptimal ? '⭐ (Tối ưu)' : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Interactive 1-Click Step Helper Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setRightPanelHintTier(3);
+                if (currentStep === 1) {
+                  setStep1GoalChoice(objective.goal);
+                } else if (currentStep === 2) {
+                  setStep2IntegerChoice(scenario.integerRequired);
+                } else if (currentStep === 3) {
+                  setFocusedConstraintIdx(prev => (prev === null ? 0 : (prev + 1) % Math.max(1, system.length)));
+                } else if (currentStep === 5 && vertexEvaluations.length > 0) {
+                  const optVe = vertexEvaluations.find(ve => ve.isOptimal) || vertexEvaluations[0];
+                  setHighlightVertex(optVe.vertex);
+                  setKValue(optVe.value);
+                } else if (currentStep === 6) {
+                  const optVe = vertexEvaluations.find(ve => ve.isOptimal);
+                  if (optVe) {
+                    setPredictedOptVertex(optVe.label);
+                    setHighlightVertex(optVe.vertex);
+                    setKValue(optVe.value);
+                  }
+                }
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>
+                {currentStep === 1
+                  ? 'Chỉ đáp án mẫu Bước 1'
+                  : currentStep === 2
+                  ? 'Chỉ đáp án mẫu Bước 2'
+                  : currentStep === 3
+                  ? 'Soi từng đường biên trên đồ thị'
+                  : currentStep === 4
+                  ? 'Xem giải thích miền khả thi'
+                  : currentStep === 5
+                  ? 'Soi tọa độ các đỉnh trên đồ thị'
+                  : currentStep === 6
+                  ? 'Chỉ đỉnh tối ưu trên đồ thị'
+                  : 'Xem tóm tắt toàn bài'}
+              </span>
+            </button>
           </div>
         </div>
       </div>

@@ -29,6 +29,9 @@ interface OptimizationGraphCanvasProps {
   result: OptimizationResult;
   kValue: number;
   onKValueChange: (k: number) => void;
+  activeStep?: number;
+  stepVerified?: boolean;
+  focusedConstraintIdx?: number | null;
   showLevelCurve?: boolean;
   showIntegerPoints?: boolean;
   showOptimalPoint?: boolean;
@@ -39,11 +42,45 @@ interface OptimizationGraphCanvasProps {
   isPresentationMode?: boolean;
 }
 
+const STEP_GRAPH_LABELS: Record<number, { badge: string; desc: string }> = {
+  1: {
+    badge: 'Bước 1/7: Hệ trục & Mục tiêu',
+    desc: 'Khởi tạo mặt phẳng tọa độ Oxy gắn với đại lượng thực tế của bài toán'
+  },
+  2: {
+    badge: 'Bước 2/7: Miền biến số x ≥ 0, y ≥ 0',
+    desc: 'Xác định góc phần tư thứ nhất (x ≥ 0, y ≥ 0) và điều kiện nguyên của biến'
+  },
+  3: {
+    badge: 'Bước 3/7: Dựng các đường biên ràng buộc',
+    desc: 'Vẽ các đường thẳng biên (d1), (d2)... và xác định nửa mặt phẳng nghiệm'
+  },
+  4: {
+    badge: 'Bước 4/7: Miền phương án khả thi',
+    desc: 'Tô màu miền đa giác lồi (giao của tất cả các nửa mặt phẳng ràng buộc)'
+  },
+  5: {
+    badge: 'Bước 5/7: Xác định các đỉnh cực biên',
+    desc: 'Đánh dấu tọa độ các đỉnh giao điểm O, A, B, C... trên biên miền khả thi'
+  },
+  6: {
+    badge: 'Bước 6/7: Quét đường mức F = k',
+    desc: 'Tịnh tiến đường mức F(x; y) = k theo hướng vectơ pháp tuyến để tìm cực trị'
+  },
+  7: {
+    badge: 'Bước 7/7: Phương án tối ưu hoàn chỉnh',
+    desc: 'Xác nhận điểm tiếp xúc tối ưu và đối chiếu kết luận thực tiễn'
+  }
+};
+
 export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = ({
   scenario,
   result,
   kValue,
   onKValueChange,
+  activeStep,
+  stepVerified = false,
+  focusedConstraintIdx = null,
   showLevelCurve = true,
   showIntegerPoints = false,
   showOptimalPoint = true,
@@ -72,7 +109,40 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
 
   // Animation state for sliding the level curve k
   const [isPlaying, setIsPlaying] = useState(false);
+  const [userForcedLevelCurve, setUserForcedLevelCurve] = useState(false);
+  const [showFullGraphOverride, setShowFullGraphOverride] = useState(false);
   const animFrameRef = useRef<number | null>(null);
+  const animKRef = useRef<number>(kValue);
+
+  const effectiveStep = activeStep ?? 7;
+  const isStepByStepMode = activeStep !== undefined && !showFullGraphOverride;
+
+  // Reset userForcedLevelCurve when activeStep changes so the graph follows the step unless user clicks Play/Slider
+  useEffect(() => {
+    setIsPlaying(false);
+    setUserForcedLevelCurve(false);
+  }, [activeStep, scenario.id]);
+
+  // Progressive visibility flags based on current step (or full override / active Play animation)
+  const displayFirstQuadrant =
+    !isStepByStepMode || effectiveStep >= 2 || (effectiveStep === 1 && stepVerified) || isPlaying || userForcedLevelCurve;
+  const displayBoundaryLines =
+    !isStepByStepMode || effectiveStep >= 3 || (effectiveStep === 2 && stepVerified) || isPlaying || userForcedLevelCurve;
+  const displayFeasiblePolygon =
+    !isStepByStepMode || effectiveStep >= 4 || (effectiveStep === 3 && stepVerified) || isPlaying || userForcedLevelCurve;
+  const displayVertices =
+    !isStepByStepMode || effectiveStep >= 5 || (effectiveStep === 4 && stepVerified) || isPlaying || userForcedLevelCurve || highlightVertex !== null;
+  const displayLevelCurve =
+    (!isStepByStepMode && showLevelCurve) ||
+    effectiveStep >= 6 ||
+    (effectiveStep === 5 && stepVerified) ||
+    isPlaying ||
+    userForcedLevelCurve;
+  const displayIntegerLattice =
+    showIntegerPoints ||
+    (scenario.integerRequired &&
+      (effectiveStep >= 5 || (effectiveStep === 2 && stepVerified))) ||
+    false;
 
   const { objective, system } = scenario;
   const { orderedPolygon, optimalPoints, optimalValue, integerPoints, integerOptimalPoint } = result;
@@ -200,27 +270,41 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
   const kValueRef = useRef(kValue);
   useEffect(() => {
     kValueRef.current = kValue;
-  }, [kValue]);
+    if (!isPlaying) {
+      animKRef.current = kValue;
+    }
+  }, [kValue, isPlaying]);
 
-  // Animation Loop for level curve k
+  // Animation Loop for level curve k (Uses floating-point accumulator animKRef so high-FPS screens never stall!)
   useEffect(() => {
     if (!isPlaying) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       return;
     }
 
+    animKRef.current = kValueRef.current;
+    if (animKRef.current >= kRange.max - 0.05 || animKRef.current < kRange.min) {
+      animKRef.current = kRange.min;
+    }
+
     let lastTime = performance.now();
-    const speed = (kRange.max - kRange.min) / 6000; // Complete full sweep in 6 seconds
+    const span = Math.max(10, kRange.max - kRange.min);
+    const speed = span / 5200; // Smooth full sweep in ~5.2 seconds
 
     const step = (now: number) => {
-      const dt = now - lastTime;
+      const dt = Math.min(64, Math.max(1, now - lastTime));
       lastTime = now;
 
-      let nextK = kValueRef.current + speed * dt;
-      if (nextK >= kRange.max) {
+      let nextK = animKRef.current + speed * dt;
+      if (nextK > kRange.max) {
         nextK = kRange.min;
       }
-      onKValueChange(Math.round(nextK * 10) / 10);
+      animKRef.current = nextK;
+      kValueRef.current = nextK;
+
+      // Round to 1 decimal place (or 2 for small ranges) for display without losing accumulator precision
+      const displayK = span <= 30 ? Math.round(nextK * 100) / 100 : Math.round(nextK * 10) / 10;
+      onKValueChange(displayK);
 
       animFrameRef.current = requestAnimationFrame(step);
     };
@@ -286,6 +370,16 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
 
   const originSvg = mathToSvg({ x: 0, y: 0 });
 
+  // First quadrant SVG rect for Step 2 (x >= 0, y >= 0)
+  const firstQuadrantRect = useMemo(() => {
+    const topRight = mathToSvg({ x: Math.max(0, bounds.maxX), y: Math.max(0, bounds.maxY) });
+    const x = Math.max(0, originSvg.x);
+    const y = Math.max(0, topRight.y);
+    const width = Math.max(0, dimensions.width - x);
+    const height = Math.max(0, originSvg.y - y);
+    return { x, y, width, height };
+  }, [bounds.maxX, bounds.maxY, originSvg.x, originSvg.y, dimensions.width, mathToSvg]);
+
   // Feasible polygon SVG path (supports both bounded polygons and unbounded regions clipped to view)
   const feasibleFillPoints = useMemo(() => {
     if (result.regionType === 'empty') return '';
@@ -324,15 +418,58 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
 
   // Level curve line segment in current box: cx*x + cy*y = kValue
   const levelCurveSegment = useMemo(() => {
-    if (!showLevelCurve || (Math.abs(objective.cx) < 1e-9 && Math.abs(objective.cy) < 1e-9)) {
+    if (!displayLevelCurve || (Math.abs(objective.cx) < 1e-9 && Math.abs(objective.cy) < 1e-9)) {
       return null;
     }
     const seg = getLineSegmentInBox(objective.cx, objective.cy, kValue, bounds);
     if (!seg) return null;
     const p1 = mathToSvg(seg[0]);
     const p2 = mathToSvg(seg[1]);
-    return { p1, p2 };
-  }, [showLevelCurve, objective, kValue, bounds, mathToSvg]);
+    return { p1, p2, mathP1: seg[0], mathP2: seg[1] };
+  }, [displayLevelCurve, objective, kValue, bounds, mathToSvg]);
+
+  // Compute the exact intersection chord of the level curve inside the feasible polygon
+  const feasibleChordSegment = useMemo(() => {
+    if (!displayLevelCurve || orderedPolygon.length < 3) return null;
+    const { cx, cy } = objective;
+    if (Math.abs(cx) < 1e-9 && Math.abs(cy) < 1e-9) return null;
+
+    const intersections: Point2D[] = [];
+    const n = orderedPolygon.length;
+    for (let i = 0; i < n; i++) {
+      const a = orderedPolygon[i];
+      const b = orderedPolygon[(i + 1) % n];
+      const va = cx * a.x + cy * a.y - kValue;
+      const vb = cx * b.x + cy * b.y - kValue;
+
+      if (Math.abs(va) <= 1e-5) {
+        intersections.push(a);
+      }
+      if (va * vb < -1e-9) {
+        const t = va / (va - vb);
+        intersections.push({
+          x: a.x + t * (b.x - a.x),
+          y: a.y + t * (b.y - a.y)
+        });
+      }
+    }
+
+    // Deduplicate points
+    const unique: Point2D[] = [];
+    for (const pt of intersections) {
+      if (!unique.some(u => Math.hypot(u.x - pt.x, u.y - pt.y) < 1e-3)) {
+        unique.push(pt);
+      }
+    }
+
+    if (unique.length >= 2) {
+      return {
+        p1: mathToSvg(unique[0]),
+        p2: mathToSvg(unique[unique.length - 1])
+      };
+    }
+    return null;
+  }, [displayLevelCurve, orderedPolygon, objective, kValue, mathToSvg]);
 
   // Check relationship between current level curve and feasible region
   const levelCurveStatus = useMemo(() => {
@@ -391,27 +528,31 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
     return { x: sum.x / orderedPolygon.length, y: sum.y / orderedPolygon.length };
   }, [orderedPolygon]);
 
+  const stepGraphInfo = STEP_GRAPH_LABELS[effectiveStep] || STEP_GRAPH_LABELS[7];
+
   return (
     <div className={`relative flex flex-col w-full select-none ${className}`}>
       {/* Top Floating Controls Bar */}
-      <div className="flex items-center justify-between pb-1.5 px-0.5 text-xs">
+      <div className="flex items-center justify-between pb-1.5 px-0.5 text-xs gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="font-extrabold text-slate-800 flex items-center gap-1.5 truncate">
             <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-pulse shrink-0" />
-            <span className="truncate">Miền Phương Án & Đường Mức {objective.label}</span>
+            <span className="truncate">
+              {activeStep !== undefined ? stepGraphInfo.badge : `Miền Phương Án & Đường Mức ${objective.label}`}
+            </span>
           </span>
 
-          {isTouchingOptimal && canRevealOptimal && (
+          {displayLevelCurve && isTouchingOptimal && canRevealOptimal && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-300 shrink-0">
               Tiếp xúc đỉnh tối ưu (k = {formatCoord(kValue)})
             </span>
           )}
-          {touchedVertex && (!isTouchingOptimal || !canRevealOptimal) && (
+          {displayLevelCurve && touchedVertex && (!isTouchingOptimal || !canRevealOptimal) && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 shrink-0">
               Đi qua đỉnh {touchedVertex.label} (k = {formatCoord(kValue)})
             </span>
           )}
-          {!touchedVertex && levelCurveStatus === 'crosses' && (
+          {displayLevelCurve && !touchedVertex && levelCurveStatus === 'crosses' && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 hidden sm:inline">
               Cắt miền khả thi
             </span>
@@ -419,6 +560,21 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {activeStep !== undefined && (
+            <button
+              type="button"
+              onClick={() => setShowFullGraphOverride(v => !v)}
+              className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition cursor-pointer min-h-[32px] flex items-center gap-1 ${
+                showFullGraphOverride
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                  : 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
+              }`}
+              title={showFullGraphOverride ? 'Chuyển về hiển thị theo từng bước' : 'Hiển thị đầy đủ đồ thị'}
+            >
+              {showFullGraphOverride ? <Eye className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+              <span className="hidden sm:inline">{showFullGraphOverride ? 'Đầy đủ' : `Theo bước ${effectiveStep}/7`}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleZoomIn}
@@ -445,6 +601,20 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
           </button>
         </div>
       </div>
+
+      {/* Step Description Sub-banner when in 7-step Wizard */}
+      {activeStep !== undefined && (
+        <div className="mb-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/80 text-[11px] text-purple-950 flex items-center justify-between gap-2">
+          <span className="font-medium truncate">
+            <strong className="font-bold text-purple-800">Trạng thái đồ thị:</strong> {stepGraphInfo.desc}
+          </span>
+          {stepVerified && (
+            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px] shrink-0">
+              ✓ Đã kiểm chứng B{effectiveStep}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* SVG Canvas Container */}
       <div
@@ -484,6 +654,19 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             >
               <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#334155" />
             </marker>
+
+            {/* Arrow marker for normal vector of level curve */}
+            <marker
+              id="level-grad-arrow"
+              viewBox="0 0 10 10"
+              refX="7"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#C026D3" />
+            </marker>
           </defs>
 
           {/* 1. Grid Lines */}
@@ -522,13 +705,37 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             })}
           </g>
 
-          {/* 2. Feasible Region Fill */}
-          {feasibleFillPoints && (
+          {/* 1.5. Step 2 First Quadrant Highlight (x >= 0, y >= 0) */}
+          {displayFirstQuadrant && !displayFeasiblePolygon && firstQuadrantRect.width > 0 && firstQuadrantRect.height > 0 && (
+            <g className="first-quadrant-layer">
+              <rect
+                x={firstQuadrantRect.x}
+                y={firstQuadrantRect.y}
+                width={firstQuadrantRect.width}
+                height={firstQuadrantRect.height}
+                fill="#10B981"
+                fillOpacity={0.1}
+              />
+              <text
+                x={Math.min(dimensions.width - 140, originSvg.x + 18)}
+                y={Math.max(36, originSvg.y - 24)}
+                fontSize={11}
+                fontWeight="bold"
+                fill="#047857"
+                fontFamily="sans-serif"
+              >
+                Miền điều kiện biến: x ≥ 0, y ≥ 0 {scenario.integerRequired ? '(x, y ∈ ℕ)' : ''}
+              </text>
+            </g>
+          )}
+
+          {/* 2. Feasible Region Fill (Step 4+) */}
+          {displayFeasiblePolygon && feasibleFillPoints && (
             <g className="feasible-region-layer">
               <polygon
                 points={feasibleFillPoints}
                 fill="#8B5CF6"
-                fillOpacity={0.16}
+                fillOpacity={0.18}
               />
               <polygon
                 points={feasibleFillPoints}
@@ -544,11 +751,36 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                   strokeDasharray={result.isStrictUnattained ? '6 4' : undefined}
                 />
               )}
+              {/* Centroid label on Step 4 */}
+              {orderedPolygon.length >= 3 && (
+                <g transform={`translate(${mathToSvg(polygonCentroid).x}, ${mathToSvg(polygonCentroid).y})`}>
+                  <rect
+                    x={-44}
+                    y={-10}
+                    width={88}
+                    height={20}
+                    rx={6}
+                    fill="#6D28D9"
+                    fillOpacity={0.86}
+                  />
+                  <text
+                    x={0}
+                    y={3.5}
+                    fontSize={10}
+                    fontWeight="bold"
+                    fill="#FFFFFF"
+                    textAnchor="middle"
+                    fontFamily="sans-serif"
+                  >
+                    Miền khả thi
+                  </text>
+                </g>
+              )}
             </g>
           )}
 
           {/* Degenerate segment highlight if applicable */}
-          {result.regionType === 'degenerate_segment' && orderedPolygon.length >= 2 && (
+          {displayFeasiblePolygon && result.regionType === 'degenerate_segment' && orderedPolygon.length >= 2 && (
             <line
               x1={mathToSvg(orderedPolygon[0]).x}
               y1={mathToSvg(orderedPolygon[0]).y}
@@ -595,26 +827,27 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
               O
             </text>
 
-            {/* Axis Name Labels */}
+            {/* Axis Name Labels with Variable Meaning on Steps 1-2 */}
             <text
-              x={dimensions.width - 16}
+              x={dimensions.width - 12}
               y={originSvg.y - 8}
-              fontSize={13}
+              fontSize={12}
               fontWeight="bold"
               fill="#1E293B"
-              fontFamily="serif"
+              textAnchor="end"
+              fontFamily="sans-serif"
             >
-              x
+              {effectiveStep <= 2 ? `x (${scenario.variables.x.name})` : 'x'}
             </text>
             <text
               x={originSvg.x + 8}
               y={18}
-              fontSize={13}
+              fontSize={12}
               fontWeight="bold"
               fill="#1E293B"
-              fontFamily="serif"
+              fontFamily="sans-serif"
             >
-              y
+              {effectiveStep <= 2 ? `y (${scenario.variables.y.name})` : 'y'}
             </text>
 
             {/* Grid Tick Numbers */}
@@ -656,65 +889,108 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             })}
           </g>
 
-          {/* 4. Constraint Boundary Lines */}
-          <g className="boundary-lines-layer">
-            {system.map((ineq, idx) => {
-              if (ineq.showLine === false) return null;
-              const seg = getLineSegmentInBox(ineq.a, ineq.b, ineq.c, bounds);
-              if (!seg) return null;
-              const p1 = mathToSvg(seg[0]);
-              const p2 = mathToSvg(seg[1]);
-              const isDashed = ineq.op === '<' || ineq.op === '>';
-              const lineColor = ineq.color || '#2563EB';
-              const shortLabel = ineq.label ? ineq.label.split(':')[0].trim() : `(d${idx + 1})`;
+          {/* Step 1 Visual Info Overlay on Coordinate Plane */}
+          {isStepByStepMode && effectiveStep === 1 && !isPlaying && !userForcedLevelCurve && (
+            <g transform={`translate(${Math.max(24, originSvg.x + 16)}, ${Math.max(28, originSvg.y - 120)})`}>
+              <rect
+                x={0}
+                y={0}
+                width={Math.min(280, dimensions.width - 48)}
+                height={78}
+                rx={10}
+                fill="#FFFFFF"
+                fillOpacity={0.95}
+                stroke="#8B5CF6"
+                strokeWidth={1.5}
+              />
+              <text x={12} y={20} fontSize={11} fontWeight="bold" fill="#6D28D9" fontFamily="sans-serif">
+                Bước 1: Khởi tạo mô hình bài toán
+              </text>
+              <text x={12} y={38} fontSize={10.5} fill="#334155" fontFamily="sans-serif">
+                • Trục Ox: {scenario.variables.x.name} ({scenario.variables.x.unit})
+              </text>
+              <text x={12} y={54} fontSize={10.5} fill="#334155" fontFamily="sans-serif">
+                • Trục Oy: {scenario.variables.y.name} ({scenario.variables.y.unit})
+              </text>
+              <text x={12} y={70} fontSize={10.5} fontWeight="bold" fill="#0F172A" fontFamily="monospace">
+                • Hàm mục tiêu: {objective.label} ({stepVerified ? objective.goal.toUpperCase() : '?'})
+              </text>
+            </g>
+          )}
 
-              // Position label at 22% along the segment inside the canvas
-              const lx = p1.x + (p2.x - p1.x) * 0.22;
-              const ly = p1.y + (p2.y - p1.y) * 0.22;
+          {/* 4. Constraint Boundary Lines (Step 3+) */}
+          {displayBoundaryLines && (
+            <g className="boundary-lines-layer">
+              {system.map((ineq, idx) => {
+                if (ineq.showLine === false) return null;
+                const seg = getLineSegmentInBox(ineq.a, ineq.b, ineq.c, bounds);
+                if (!seg) return null;
+                const p1 = mathToSvg(seg[0]);
+                const p2 = mathToSvg(seg[1]);
+                const isDashed = ineq.op === '<' || ineq.op === '>';
+                const lineColor = ineq.color || '#2563EB';
+                const isFocused = focusedConstraintIdx === idx;
+                const shortLabel = ineq.label ? ineq.label.split(':')[0].trim() : `(d${idx + 1})`;
 
-              return (
-                <g key={ineq.id}>
-                  <line
-                    x1={p1.x}
-                    y1={p1.y}
-                    x2={p2.x}
-                    y2={p2.y}
-                    stroke={lineColor}
-                    strokeWidth={2}
-                    strokeDasharray={isDashed ? '6 4' : undefined}
-                    opacity={0.88}
-                  />
-                  {/* Non-axis line badge */}
-                  {!(Math.abs(ineq.c) < 1e-6 && (Math.abs(ineq.a) < 1e-6 || Math.abs(ineq.b) < 1e-6)) && (
-                    <g transform={`translate(${Math.max(24, Math.min(dimensions.width - 36, lx))}, ${Math.max(20, Math.min(dimensions.height - 20, ly))})`}>
-                      <rect
-                        x={-16}
-                        y={-9}
-                        width={32}
-                        height={16}
-                        rx={4}
-                        fill="#FFFFFF"
-                        fillOpacity={0.9}
+                // Position label at 22% along the segment inside the canvas
+                const lx = p1.x + (p2.x - p1.x) * (0.22 + (idx % 3) * 0.12);
+                const ly = p1.y + (p2.y - p1.y) * (0.22 + (idx % 3) * 0.12);
+
+                return (
+                  <g key={ineq.id}>
+                    {isFocused && (
+                      <line
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
                         stroke={lineColor}
-                        strokeWidth={1}
+                        strokeWidth={7}
+                        strokeOpacity={0.25}
                       />
-                      <text
-                        x={0}
-                        y={2.5}
-                        fontSize={9.5}
-                        fontWeight="bold"
-                        fill={lineColor}
-                        textAnchor="middle"
-                        fontFamily="monospace"
-                      >
-                        {shortLabel}
-                      </text>
-                    </g>
-                  )}
-                </g>
-              );
-            })}
-          </g>
+                    )}
+                    <line
+                      x1={p1.x}
+                      y1={p1.y}
+                      x2={p2.x}
+                      y2={p2.y}
+                      stroke={lineColor}
+                      strokeWidth={isFocused ? 3.2 : 2.2}
+                      strokeDasharray={isDashed ? '6 4' : undefined}
+                      opacity={0.92}
+                    />
+                    {/* Non-axis line badge */}
+                    {!(Math.abs(ineq.c) < 1e-6 && (Math.abs(ineq.a) < 1e-6 || Math.abs(ineq.b) < 1e-6)) && (
+                      <g transform={`translate(${Math.max(28, Math.min(dimensions.width - 42, lx))}, ${Math.max(22, Math.min(dimensions.height - 22, ly))})`}>
+                        <rect
+                          x={-18}
+                          y={-9}
+                          width={36}
+                          height={17}
+                          rx={4}
+                          fill="#FFFFFF"
+                          fillOpacity={0.95}
+                          stroke={lineColor}
+                          strokeWidth={isFocused ? 1.8 : 1.2}
+                        />
+                        <text
+                          x={0}
+                          y={2.5}
+                          fontSize={9.5}
+                          fontWeight="bold"
+                          fill={lineColor}
+                          textAnchor="middle"
+                          fontFamily="monospace"
+                        >
+                          {shortLabel}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
 
           {/* 5. Objective Level Curve (Đường Mức P = k) */}
           {levelCurveSegment && (
@@ -726,11 +1002,11 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                 x2={levelCurveSegment.p2.x}
                 y2={levelCurveSegment.p2.y}
                 stroke="#D946EF"
-                strokeWidth={7}
-                strokeOpacity={0.28}
+                strokeWidth={8}
+                strokeOpacity={0.25}
                 strokeLinecap="round"
               />
-              {/* Main Line */}
+              {/* Main Dashed Line across Canvas */}
               <line
                 x1={levelCurveSegment.p1.x}
                 y1={levelCurveSegment.p1.y}
@@ -742,12 +1018,66 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                 strokeLinecap="round"
               />
 
+              {/* Highlighted Chord where Level Curve cuts inside Feasible Polygon */}
+              {feasibleChordSegment && (
+                <g>
+                  <line
+                    x1={feasibleChordSegment.p1.x}
+                    y1={feasibleChordSegment.p1.y}
+                    x2={feasibleChordSegment.p2.x}
+                    y2={feasibleChordSegment.p2.y}
+                    stroke="#FACC15"
+                    strokeWidth={6}
+                    strokeOpacity={0.75}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={feasibleChordSegment.p1.x}
+                    y1={feasibleChordSegment.p1.y}
+                    x2={feasibleChordSegment.p2.x}
+                    y2={feasibleChordSegment.p2.y}
+                    stroke="#A21CAF"
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                  <circle cx={feasibleChordSegment.p1.x} cy={feasibleChordSegment.p1.y} r={4} fill="#FACC15" stroke="#A21CAF" strokeWidth={1.5} />
+                  <circle cx={feasibleChordSegment.p2.x} cy={feasibleChordSegment.p2.y} r={4} fill="#FACC15" stroke="#A21CAF" strokeWidth={1.5} />
+                </g>
+              )}
+
+              {/* Gradient / Normal Vector Arrow showing sweep direction */}
+              {(() => {
+                const midX = (levelCurveSegment.p1.x + levelCurveSegment.p2.x) / 2;
+                const midY = (levelCurveSegment.p1.y + levelCurveSegment.p2.y) / 2;
+                const norm = Math.hypot(objective.cx, objective.cy) || 1;
+                const dirSign = objective.goal === 'max' ? 1 : -1;
+                const vx = (objective.cx / norm) * 26 * dirSign;
+                const vy = -(objective.cy / norm) * 26 * dirSign; // SVG y is inverted
+                return (
+                  <line
+                    x1={midX}
+                    y1={midY}
+                    x2={midX + vx}
+                    y2={midY + vy}
+                    stroke="#C026D3"
+                    strokeWidth={2.2}
+                    markerEnd="url(#level-grad-arrow)"
+                  />
+                );
+              })()}
+
               {/* Floating Label for Level Curve */}
               {(() => {
-                const badgeText = `Đường mức: k = ${formatCoord(kValue)}`;
-                const badgeW = Math.max(125, badgeText.length * 6.5 + 14);
-                const tx = Math.max(12, Math.min(dimensions.width - badgeW - 8, (levelCurveSegment.p1.x + levelCurveSegment.p2.x) / 2 - badgeW / 2));
-                const ty = Math.max(24, Math.min(dimensions.height - 44, (levelCurveSegment.p1.y + levelCurveSegment.p2.y) / 2 - 14));
+                const badgeText = `F = k = ${formatCoord(kValue)}`;
+                const badgeW = Math.max(115, badgeText.length * 6.5 + 14);
+                const anchorX = feasibleChordSegment
+                  ? (feasibleChordSegment.p1.x + feasibleChordSegment.p2.x) / 2
+                  : (levelCurveSegment.p1.x + levelCurveSegment.p2.x) / 2;
+                const anchorY = feasibleChordSegment
+                  ? (feasibleChordSegment.p1.y + feasibleChordSegment.p2.y) / 2
+                  : (levelCurveSegment.p1.y + levelCurveSegment.p2.y) / 2;
+                const tx = Math.max(12, Math.min(dimensions.width - badgeW - 8, anchorX - badgeW / 2));
+                const ty = Math.max(24, Math.min(dimensions.height - 44, anchorY - 16));
                 return (
                   <g transform={`translate(${tx}, ${ty})`}>
                     <rect
@@ -757,7 +1087,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                       height={22}
                       rx={6}
                       fill="#4A044E"
-                      fillOpacity={0.9}
+                      fillOpacity={0.92}
                     />
                     <text x={8} y={1} fontSize={11} fontWeight="bold" fill="#FDF4FF" fontFamily="sans-serif">
                       {badgeText}
@@ -769,7 +1099,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
           )}
 
           {/* 6. Integer Lattice Points (when enabled) */}
-          {showIntegerPoints && (
+          {displayIntegerLattice && (
             <g className="integer-points-layer">
               {integerPoints.map((ip, idx) => {
                 const s = mathToSvg(ip.point);
@@ -806,94 +1136,97 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             </g>
           )}
 
-          {/* 7. Vertices of the Feasible Polygon (Using unified SGK labels & exact rational coordinates) */}
-          <g className="vertices-layer">
-            {result.vertexEvaluations.map((ve, idx) => {
-              const v = ve.vertex;
-              const s = mathToSvg(v);
-              const isHighlight =
-                highlightVertex &&
-                Math.abs(highlightVertex.x - v.x) < 1e-4 &&
-                Math.abs(highlightVertex.y - v.y) < 1e-4;
-              const isOpt = canRevealOptimal && ve.isOptimal;
-              const isExcluded = ve.isStrictlyExcluded;
-              const fullLabel = `${ve.label}${formatPointCoord(v)}`;
-              const boxWidth = Math.max(48, fullLabel.length * 6.6 + 10);
+          {/* 7. Vertices of the Feasible Polygon (Step 5+) */}
+          {displayVertices && (
+            <g className="vertices-layer">
+              {result.vertexEvaluations.map((ve, idx) => {
+                const v = ve.vertex;
+                const s = mathToSvg(v);
+                const isHighlight =
+                  (highlightVertex &&
+                    Math.abs(highlightVertex.x - v.x) < 1e-4 &&
+                    Math.abs(highlightVertex.y - v.y) < 1e-4) ||
+                  (displayLevelCurve && touchedVertex?.label === ve.label);
+                const isOpt = canRevealOptimal && ve.isOptimal;
+                const isExcluded = ve.isStrictlyExcluded;
+                const fullLabel = `${ve.label}${formatPointCoord(v)}`;
+                const boxWidth = Math.max(48, fullLabel.length * 6.6 + 10);
 
-              // Compute smart outward label offset relative to polygon centroid
-              const dirX = v.x - polygonCentroid.x;
-              const dirY = v.y - polygonCentroid.y;
-              const offsetX = dirX < -0.2 ? -boxWidth - 6 : 9;
-              const offsetY = dirY < -0.2 ? 16 : -10;
+                // Compute smart outward label offset relative to polygon centroid
+                const dirX = v.x - polygonCentroid.x;
+                const dirY = v.y - polygonCentroid.y;
+                const offsetX = dirX < -0.2 ? -boxWidth - 6 : 9;
+                const offsetY = dirY < -0.2 ? 16 : -10;
 
-              return (
-                <g
-                  key={`v-${ve.label}-${idx}`}
-                  transform={`translate(${s.x}, ${s.y})`}
-                  className="cursor-pointer"
-                  onClick={e => {
-                    e.stopPropagation();
-                    onHighlightVertex?.(v);
-                  }}
-                >
-                  {/* Outer pulse circle for optimal vertex */}
-                  {isOpt && (
+                return (
+                  <g
+                    key={`v-${ve.label}-${idx}`}
+                    transform={`translate(${s.x}, ${s.y})`}
+                    className="cursor-pointer"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onHighlightVertex?.(v);
+                    }}
+                  >
+                    {/* Outer pulse circle for optimal vertex or touched vertex during Play */}
+                    {(isOpt || (displayLevelCurve && touchedVertex?.label === ve.label)) && (
+                      <circle
+                        r={14}
+                        fill={isOpt ? '#7C3AED' : '#D946EF'}
+                        fillOpacity={0.28}
+                        className="animate-ping"
+                      />
+                    )}
+
+                    {/* Highlight ring */}
+                    {isHighlight && (
+                      <circle
+                        r={11}
+                        fill="none"
+                        stroke="#2563EB"
+                        strokeWidth={3}
+                        strokeDasharray="3 2"
+                      />
+                    )}
+
+                    {/* Main Point Marker (Hollow if strictly excluded by < or >) */}
                     <circle
-                      r={14}
-                      fill="#7C3AED"
-                      fillOpacity={0.25}
-                      className="animate-ping"
+                      r={isOpt ? 7.5 : 5.8}
+                      fill={isExcluded ? '#FFFFFF' : isOpt ? '#7C3AED' : '#1E293B'}
+                      stroke={isExcluded ? '#EF4444' : '#FFFFFF'}
+                      strokeWidth={2.2}
+                      strokeDasharray={isExcluded ? '2 1' : undefined}
                     />
-                  )}
 
-                  {/* Highlight ring */}
-                  {isHighlight && (
-                    <circle
-                      r={11}
-                      fill="none"
-                      stroke="#2563EB"
-                      strokeWidth={3}
-                      strokeDasharray="3 2"
-                    />
-                  )}
-
-                  {/* Main Point Marker (Hollow if strictly excluded by < or >) */}
-                  <circle
-                    r={isOpt ? 7.5 : 5.8}
-                    fill={isExcluded ? '#FFFFFF' : isOpt ? '#7C3AED' : '#1E293B'}
-                    stroke={isExcluded ? '#EF4444' : '#FFFFFF'}
-                    strokeWidth={2.2}
-                    strokeDasharray={isExcluded ? '2 1' : undefined}
-                  />
-
-                  {/* Label tag */}
-                  <g transform={`translate(${offsetX}, ${offsetY})`}>
-                    <rect
-                      x={-2}
-                      y={-12}
-                      width={boxWidth}
-                      height={19}
-                      rx={5}
-                      fill="#FFFFFF"
-                      fillOpacity={0.94}
-                      stroke={isExcluded ? '#EF4444' : isOpt ? '#7C3AED' : '#CBD5E1'}
-                      strokeWidth={isOpt ? 1.5 : 1}
-                    />
-                    <text
-                      x={3}
-                      y={1.5}
-                      fontSize={11}
-                      fontWeight="bold"
-                      fill={isExcluded ? '#DC2626' : isOpt ? '#6D28D9' : '#0F172A'}
-                      fontFamily="monospace"
-                    >
-                      {fullLabel}
-                    </text>
+                    {/* Label tag */}
+                    <g transform={`translate(${offsetX}, ${offsetY})`}>
+                      <rect
+                        x={-2}
+                        y={-12}
+                        width={boxWidth}
+                        height={19}
+                        rx={5}
+                        fill="#FFFFFF"
+                        fillOpacity={0.94}
+                        stroke={isExcluded ? '#EF4444' : isOpt ? '#7C3AED' : isHighlight ? '#2563EB' : '#CBD5E1'}
+                        strokeWidth={isOpt || isHighlight ? 1.6 : 1}
+                      />
+                      <text
+                        x={3}
+                        y={1.5}
+                        fontSize={11}
+                        fontWeight="bold"
+                        fill={isExcluded ? '#DC2626' : isOpt ? '#6D28D9' : '#0F172A'}
+                        fontFamily="monospace"
+                      >
+                        {fullLabel}
+                      </text>
+                    </g>
                   </g>
-                </g>
-              );
-            })}
-          </g>
+                );
+              })}
+            </g>
+          )}
         </svg>
 
         {/* Empty region overlay notice */}
@@ -905,15 +1238,26 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
 
         {/* Bottom Floating Legend on Canvas */}
         <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:right-auto bg-white/95 backdrop-blur-xs border border-slate-200/90 rounded-xl px-3 py-2 text-xs shadow-xs flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-purple-200 border border-purple-400" />
-            <span className="font-semibold text-slate-700">Miền khả thi</span>
-          </div>
+          {displayFeasiblePolygon && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-purple-200 border border-purple-400" />
+              <span className="font-semibold text-slate-700">Miền khả thi</span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 h-0.5 border-t-2 border-dashed border-fuchsia-600" />
-            <span className="font-semibold text-slate-700">Đường mức F = k</span>
-          </div>
+          {displayBoundaryLines && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 bg-blue-600" />
+              <span className="font-semibold text-slate-700">Đường biên BPT</span>
+            </div>
+          )}
+
+          {displayLevelCurve && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 border-t-2 border-dashed border-fuchsia-600" />
+              <span className="font-semibold text-slate-700">Đường mức F = k</span>
+            </div>
+          )}
 
           {canRevealOptimal && optimalPoints.length > 0 && (
             <div className="flex items-center gap-1.5">
@@ -924,15 +1268,6 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                   .filter(ve => ve.isOptimal)
                   .map(ve => `${ve.label}${formatPointCoord(ve.vertex)}`)
                   .join(', ')}
-              </span>
-            </div>
-          )}
-
-          {showIntegerPoints && canRevealOptimal && integerOptimalPoint && (
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-600 ring-2 ring-rose-200" />
-              <span className="font-bold text-rose-800 font-mono">
-                Nguyên tối ưu: ({integerOptimalPoint.x}; {integerOptimalPoint.y})
               </span>
             </div>
           )}
@@ -959,7 +1294,10 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={() => setIsPlaying(!isPlaying)}
+              onClick={() => {
+                setUserForcedLevelCurve(true);
+                setIsPlaying(prev => !prev);
+              }}
               className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer shadow-xs min-h-[36px] ${
                 isPlaying
                   ? 'bg-amber-600 hover:bg-amber-700 text-white'
@@ -975,6 +1313,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                 type="button"
                 onClick={() => {
                   setIsPlaying(false);
+                  setUserForcedLevelCurve(true);
                   onKValueChange(optimalValue);
                   if (optimalPoints.length > 0) {
                     onHighlightVertex?.(optimalPoints[0]);
@@ -992,6 +1331,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
               type="button"
               onClick={() => {
                 setIsPlaying(false);
+                setUserForcedLevelCurve(true);
                 onKValueChange(kRange.min);
               }}
               className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
@@ -1008,6 +1348,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             type="button"
             onClick={() => {
               setIsPlaying(false);
+              setUserForcedLevelCurve(true);
               const nextK = Math.max(kRange.min, Math.round((kValue - kRange.step) * 100) / 100);
               onKValueChange(nextK);
             }}
@@ -1030,6 +1371,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
               value={kValue}
               onChange={e => {
                 setIsPlaying(false);
+                setUserForcedLevelCurve(true);
                 const rawVal = parseFloat(e.target.value) || 0;
                 // Magnetic snap to exact rational vertex value if within 0.65 * step
                 const nearVertex = result.vertexEvaluations.find(
@@ -1049,6 +1391,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             type="button"
             onClick={() => {
               setIsPlaying(false);
+              setUserForcedLevelCurve(true);
               const nextK = Math.min(kRange.max, Math.round((kValue + kRange.step) * 100) / 100);
               onKValueChange(nextK);
             }}
@@ -1083,6 +1426,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
                     type="button"
                     onClick={() => {
                       setIsPlaying(false);
+                      setUserForcedLevelCurve(true);
                       onKValueChange(ve.value);
                       onHighlightVertex?.(ve.vertex);
                     }}
