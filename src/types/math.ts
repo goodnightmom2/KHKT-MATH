@@ -39,7 +39,15 @@ export type LearningMode = 'guided' | 'practice' | 'teacher';
 
 export type ShadingMode = 'solution' | 'exclusion'; // Tô miền nghiệm (xanh) HOẶC gạch bỏ miền không phải nghiệm (SGK Việt Nam)
 
-export type OptiExpression = 'happy' | 'wink' | 'surprised' | 'thinking' | 'cheering' | 'sad';
+export type OptiExpression =
+  | 'happy'
+  | 'wink'
+  | 'surprised'
+  | 'thinking'
+  | 'cheering'
+  | 'sad'
+  | 'encouraging'
+  | 'excited';
 
 export type OptiPose = 'idle' | 'pointing' | 'reading' | 'running' | 'waving';
 

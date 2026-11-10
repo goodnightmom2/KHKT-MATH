@@ -83,25 +83,25 @@ export const Hero: React.FC<HeroProps> = ({
           <div className="lg:col-span-5 flex justify-center lg:justify-end">
             <div className="relative w-full max-w-xs sm:max-w-md bg-white rounded-3xl p-4 sm:p-7 border border-blue-100 shadow-lg shadow-blue-500/10 flex flex-col items-center text-center">
               {/* Badge */}
-              <div className="absolute -top-3 px-3 py-0.5 sm:px-4 sm:py-1 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[10px] sm:text-xs font-bold tracking-wider uppercase shadow-xs">
-                Linh vật đồng hành Opti
+              <div className="absolute -top-3 px-3 py-0.5 sm:px-4 sm:py-1 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-blue-600 text-white text-[10px] sm:text-xs font-bold tracking-wider uppercase shadow-xs">
+                Linh vật AI Shiba – Opti
               </div>
 
-              {/* Opti Mascot Character */}
-              <div className="my-1 sm:my-2 py-1">
-                <div className="hidden sm:block">
-                  <OptiMascot expression="happy" pose="waving" size={200} />
-                </div>
-                <div className="sm:hidden">
-                  <OptiMascot expression="happy" pose="waving" size={130} />
-                </div>
+              {/* Opti Shiba Mascot Character */}
+              <div className="my-1 sm:my-2 py-1 flex items-center justify-center">
+                <OptiMascot
+                  expression="happy"
+                  pose="waving"
+                  size={175}
+                  className="!w-[145px] !h-[145px] sm:!w-[205px] sm:!h-[205px]"
+                />
               </div>
 
               {/* Speech bubble */}
               <div className="w-full bg-blue-50/90 border border-blue-200 rounded-2xl p-3 sm:p-4 text-left relative mt-1 sm:mt-2">
                 <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-50 border-t border-l border-blue-200 transform rotate-45" />
                 <p className="text-xs sm:text-sm font-semibold text-slate-800 leading-snug">
-                  "Mình là <strong className="text-blue-600">Opti</strong>! Cùng mình khám phá miền nghiệm của <span className="font-mono text-blue-700 bg-white px-1.5 py-0.5 rounded border border-blue-200 text-xs">2x + y ≤ 6</span> ngay nhé!"
+                  "Gâu! Mình là <strong className="text-amber-600">Shiba Opti</strong>! Cùng mình khám phá miền nghiệm của <span className="font-mono text-blue-700 bg-white px-1.5 py-0.5 rounded border border-blue-200 text-xs">2x + y ≤ 6</span> ngay nhé!"
                 </p>
                 <div className="mt-2 flex items-center justify-between text-[10px] sm:text-xs text-slate-500">
                   <span className="font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
