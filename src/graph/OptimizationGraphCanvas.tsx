@@ -101,11 +101,50 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
     height: 480
   });
 
-  // Pan & Dragging state
+  // Pan, Dragging & 2-Touch Pinch-to-Zoom state
   const [isPanning, setIsPanning] = useState(false);
+  const [isPinching, setIsPinching] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panCenterStart, setPanCenterStart] = useState<Point2D>({ x: 0, y: 0 });
   const pointerMovedRef = useRef<number>(0);
+
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    initialScale: number;
+    initialMidMath: Point2D;
+  } | null>(null);
+
+  const MIN_SCALE = 10;
+  const MAX_SCALE = 130;
+
+  // Native wheel / trackpad pinch zoom
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+
+      const anchorMathX = (mouseX - cx) / scale + viewCenter.x;
+      const anchorMathY = (cy - mouseY) / scale + viewCenter.y;
+
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * zoomFactor));
+
+      setScale(nextScale);
+      setViewCenter({
+        x: anchorMathX - (mouseX - cx) / nextScale,
+        y: anchorMathY + (mouseY - cy) / nextScale
+      });
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [dimensions, scale, viewCenter]);
 
   // Animation state for sliding the level curve k
   const [isPlaying, setIsPlaying] = useState(false);
@@ -315,20 +354,81 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
     };
   }, [isPlaying, kRange, onKValueChange]);
 
-  // Pointer event handlers for panning
+  // Pointer event handlers for panning & 2-touch pinch-to-zoom
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
+
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {}
+
+    // 2-finger pinch gesture start
+    if (activePointersRef.current.size === 2) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const rect = svg.getBoundingClientRect();
+      const midSvgX = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const midSvgY = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+
+      pinchStateRef.current = {
+        initialDistance: Math.max(dist, 10),
+        initialScale: scale,
+        initialMidMath: {
+          x: (midSvgX - cx) / scale + viewCenter.x,
+          y: (cy - midSvgY) / scale + viewCenter.y
+        }
+      };
+
+      setIsPinching(true);
+      setIsPanning(false);
+      pointerMovedRef.current = 999;
+      return;
+    }
+
+    if (activePointersRef.current.size > 2) return;
+
     pointerMovedRef.current = 0;
     setIsPanning(true);
     setPanStart({ x: e.clientX, y: e.clientY });
     setPanCenterStart({ ...viewCenter });
-    try {
-      svg.setPointerCapture(e.pointerId);
-    } catch {}
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    // Handle 2-touch pinch-to-zoom & 2-finger pan
+    if (activePointersRef.current.size >= 2 && pinchStateRef.current) {
+      const pts = Array.from(activePointersRef.current.values());
+      const newDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const { initialDistance, initialScale, initialMidMath } = pinchStateRef.current;
+
+      const ratio = Math.max(10, newDist) / initialDistance;
+      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, initialScale * ratio));
+
+      const rect = svg.getBoundingClientRect();
+      const midSvgX = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const midSvgY = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+
+      setScale(nextScale);
+      setViewCenter({
+        x: initialMidMath.x - (midSvgX - cx) / nextScale,
+        y: initialMidMath.y + (midSvgY - cy) / nextScale
+      });
+      pointerMovedRef.current = 999;
+      return;
+    }
+
     if (!isPanning) return;
     const dx = (e.clientX - panStart.x) / scale;
     const dy = (e.clientY - panStart.y) / scale;
@@ -340,7 +440,22 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (isPanning) setIsPanning(false);
+    activePointersRef.current.delete(e.pointerId);
+
+    if (activePointersRef.current.size < 2) {
+      pinchStateRef.current = null;
+      setIsPinching(false);
+    }
+
+    if (activePointersRef.current.size === 1) {
+      const remaining = Array.from(activePointersRef.current.values())[0];
+      setPanStart({ x: remaining.x, y: remaining.y });
+      setPanCenterStart({ ...viewCenter });
+      setIsPanning(true);
+    } else if (activePointersRef.current.size === 0) {
+      if (isPanning) setIsPanning(false);
+    }
+
     try {
       if (svgRef.current && svgRef.current.hasPointerCapture(e.pointerId)) {
         svgRef.current.releasePointerCapture(e.pointerId);
@@ -349,24 +464,28 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
   };
 
   // Zoom controls
-  const handleZoomIn = () => setScale(s => Math.min(95, s * 1.25));
-  const handleZoomOut = () => setScale(s => Math.max(12, s / 1.25));
+  const handleZoomIn = () => setScale(s => Math.min(MAX_SCALE, s * 1.25));
+  const handleZoomOut = () => setScale(s => Math.max(MIN_SCALE, s / 1.25));
   const handleResetView = () => {
     setViewCenter(idealCamera.center);
     setScale(idealCamera.scale);
   };
 
-  // Grid steps
-  const gridStep = scale > 45 ? 1 : scale > 22 ? 2 : 5;
+  // Grid steps (adapts dynamically to 2-finger pinch zoom in/out)
+  const gridStep = scale > 75 ? 0.5 : scale > 26 ? 1 : scale > 14 ? 2 : 5;
   const startGridX = Math.floor(bounds.minX / gridStep) * gridStep;
   const endGridX = Math.ceil(bounds.maxX / gridStep) * gridStep;
   const startGridY = Math.floor(bounds.minY / gridStep) * gridStep;
   const endGridY = Math.ceil(bounds.maxY / gridStep) * gridStep;
 
   const gridLinesX: number[] = [];
-  for (let x = startGridX; x <= endGridX; x += gridStep) gridLinesX.push(x);
+  for (let x = startGridX; x <= endGridX + 1e-6; x += gridStep) {
+    gridLinesX.push(Math.round(x * 10) / 10);
+  }
   const gridLinesY: number[] = [];
-  for (let y = startGridY; y <= endGridY; y += gridStep) gridLinesY.push(y);
+  for (let y = startGridY; y <= endGridY + 1e-6; y += gridStep) {
+    gridLinesY.push(Math.round(y * 10) / 10);
+  }
 
   const originSvg = mathToSvg({ x: 0, y: 0 });
 
@@ -628,6 +747,7 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           className="w-full h-full block"
         >
           <defs>
@@ -1228,6 +1348,14 @@ export const OptimizationGraphCanvas: React.FC<OptimizationGraphCanvasProps> = (
             </g>
           )}
         </svg>
+
+        {/* 2-Touch Pinch Zoom Indicator Badge */}
+        {isPinching && (
+          <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-bold shadow-md backdrop-blur-xs pointer-events-none flex items-center gap-1.5">
+            <ZoomIn className="w-3.5 h-3.5 text-cyan-400" />
+            <span>{Math.round((scale / (idealCamera.scale || 36)) * 100)}%</span>
+          </div>
+        )}
 
         {/* Empty region overlay notice */}
         {result.regionType === 'empty' && (

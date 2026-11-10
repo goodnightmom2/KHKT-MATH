@@ -85,6 +85,16 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [mobileEditTarget, setMobileEditTarget] = useState<'A' | 'B'>('A');
 
   const pointerMovedRef = useRef<number>(0);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    initialScale: number;
+    initialMidMath: Point2D;
+  } | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+
+  const MIN_SCALE = 10;
+  const MAX_SCALE = 130;
 
   // Sync mobileEditTarget with activePointTarget when provided
   useEffect(() => {
@@ -199,10 +209,77 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const aSvg = pointA ? mathToSvg(pointA) : null;
   const bSvg = pointB ? mathToSvg(pointB) : null;
 
-  // Mouse / Touch handlers for dragging M, A, B or panning
+  // Mouse Wheel / Trackpad Pinch Zoom handler
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const onWheel = (e: WheelEvent) => {
+      // Allow normal page scroll on mobilePanLocked unless Ctrl/pinch is active
+      if (mobilePanLocked && !e.ctrlKey) return;
+      e.preventDefault();
+
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      setScale(prevScale => {
+        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prevScale * zoomFactor));
+        const anchorMathX = viewCenter.x + (mouseX - cx) / prevScale;
+        const anchorMathY = viewCenter.y - (mouseY - cy) / prevScale;
+        setViewCenter({
+          x: anchorMathX - (mouseX - cx) / nextScale,
+          y: anchorMathY + (mouseY - cy) / nextScale
+        });
+        return nextScale;
+      });
+    };
+
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [dimensions.width, dimensions.height, viewCenter.x, viewCenter.y, mobilePanLocked]);
+
+  // Mouse / Touch handlers for dragging M, A, B, panning, or 2-finger pinch-to-zoom
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
+
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {}
+
+    // If 2 fingers are touching -> Enter 2-Touch Pinch-to-Zoom & Pan mode!
+    if (activePointersRef.current.size >= 2) {
+      pointerMovedRef.current = 999; // Prevent accidental click on release
+      setIsDraggingM(false);
+      setIsDraggingA(false);
+      setIsDraggingB(false);
+      setIsPanning(false);
+      setIsPinching(true);
+
+      const pts = Array.from(activePointersRef.current.values());
+      const dist = Math.max(12, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y));
+      const rect = svg.getBoundingClientRect();
+      const midSvgX = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const midSvgY = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+
+      pinchStateRef.current = {
+        initialDistance: dist,
+        initialScale: scale,
+        initialMidMath: {
+          x: viewCenter.x + (midSvgX - cx) / scale,
+          y: viewCenter.y - (midSvgY - cy) / scale
+        }
+      };
+      return;
+    }
+
     pointerMovedRef.current = 0;
     const rect = svg.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -215,9 +292,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     if (showPointsAB && aSvg && Math.hypot(mouseX - aSvg.x, mouseY - aSvg.y) <= hitRadius) {
       setIsDraggingA(true);
       setMobileEditTarget('A');
-      try {
-        svg.setPointerCapture(e.pointerId);
-      } catch {}
       return;
     }
 
@@ -225,9 +299,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     if (showPointsAB && bSvg && Math.hypot(mouseX - bSvg.x, mouseY - bSvg.y) <= hitRadius) {
       setIsDraggingB(true);
       setMobileEditTarget('B');
-      try {
-        svg.setPointerCapture(e.pointerId);
-      } catch {}
       return;
     }
 
@@ -235,9 +306,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     const distToM = Math.hypot(mouseX - mSvg.x, mouseY - mSvg.y);
     if (showPointM && distToM <= hitRadius) {
       setIsDraggingM(true);
-      try {
-        svg.setPointerCapture(e.pointerId);
-      } catch {}
       return;
     }
 
@@ -246,15 +314,43 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
       setPanCenterStart({ ...viewCenter });
-      try {
-        svg.setPointerCapture(e.pointerId);
-      } catch {}
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
+
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    // Handle 2-Finger Pinch-to-Zoom & Focal-Point Pan
+    if (activePointersRef.current.size >= 2 && pinchStateRef.current) {
+      pointerMovedRef.current = 999;
+      const pts = Array.from(activePointersRef.current.values());
+      const newDist = Math.max(12, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y));
+      const zoomRatio = newDist / pinchStateRef.current.initialDistance;
+      const nextScale = Math.max(
+        MIN_SCALE,
+        Math.min(MAX_SCALE, pinchStateRef.current.initialScale * zoomRatio)
+      );
+
+      const rect = svg.getBoundingClientRect();
+      const midSvgX = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const midSvgY = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+
+      const anchor = pinchStateRef.current.initialMidMath;
+      setScale(nextScale);
+      setViewCenter({
+        x: anchor.x - (midSvgX - cx) / nextScale,
+        y: anchor.y + (midSvgY - cy) / nextScale
+      });
+      return;
+    }
+
     const rect = svg.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -284,10 +380,25 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
-    if (isDraggingM) setIsDraggingM(false);
-    if (isDraggingA) setIsDraggingA(false);
-    if (isDraggingB) setIsDraggingB(false);
-    if (isPanning) setIsPanning(false);
+    activePointersRef.current.delete(e.pointerId);
+
+    if (activePointersRef.current.size < 2) {
+      pinchStateRef.current = null;
+      setIsPinching(false);
+    }
+
+    // If 1 finger remains after lifting the 2nd finger, smoothly transition to pan from current spot
+    if (activePointersRef.current.size === 1 && !mobilePanLocked) {
+      const remaining = Array.from(activePointersRef.current.values())[0];
+      setPanStart({ x: remaining.x, y: remaining.y });
+      setPanCenterStart({ ...viewCenter });
+      setIsPanning(true);
+    } else if (activePointersRef.current.size === 0) {
+      if (isDraggingM) setIsDraggingM(false);
+      if (isDraggingA) setIsDraggingA(false);
+      if (isDraggingB) setIsDraggingB(false);
+      if (isPanning) setIsPanning(false);
+    }
 
     try {
       if (svg && svg.hasPointerCapture(e.pointerId)) {
@@ -297,8 +408,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   };
 
   // Zoom controls
-  const handleZoomIn = () => setScale(s => Math.min(80, s * 1.25));
-  const handleZoomOut = () => setScale(s => Math.max(16, s / 1.25));
+  const handleZoomIn = () => setScale(s => Math.min(MAX_SCALE, s * 1.25));
+  const handleZoomOut = () => setScale(s => Math.max(MIN_SCALE, s / 1.25));
   const handleResetView = () => {
     setViewCenter({ x: 1, y: 1.5 });
     setScale(36);
@@ -363,18 +474,22 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     }
   };
 
-  // Grid steps
-  const gridStep = scale > 45 ? 1 : scale > 25 ? 1 : 2;
+  // Grid steps (adapts dynamically to 2-finger pinch zoom in/out)
+  const gridStep = scale > 75 ? 0.5 : scale > 26 ? 1 : scale > 14 ? 2 : 5;
   const startGridX = Math.floor(minX / gridStep) * gridStep;
   const endGridX = Math.ceil(maxX / gridStep) * gridStep;
   const startGridY = Math.floor(minY / gridStep) * gridStep;
   const endGridY = Math.ceil(maxY / gridStep) * gridStep;
 
   const gridLinesX: number[] = [];
-  for (let x = startGridX; x <= endGridX; x += gridStep) gridLinesX.push(x);
+  for (let x = startGridX; x <= endGridX + 1e-6; x += gridStep) {
+    gridLinesX.push(Math.round(x * 10) / 10);
+  }
 
   const gridLinesY: number[] = [];
-  for (let y = startGridY; y <= endGridY; y += gridStep) gridLinesY.push(y);
+  for (let y = startGridY; y <= endGridY + 1e-6; y += gridStep) {
+    gridLinesY.push(Math.round(y * 10) / 10);
+  }
 
   // Origin in SVG
   const originSvg = mathToSvg({ x: 0, y: 0 });
@@ -472,6 +587,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           onClick={handleCanvasClick}
         >
           <defs>
@@ -904,6 +1020,14 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               : 'Kéo điểm M hoặc bấm lên đồ thị để kiểm tra nghiệm'}
           </span>
         </div>
+
+        {/* 2-Touch Pinch Zoom Indicator Badge */}
+        {isPinching && (
+          <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-bold shadow-md backdrop-blur-xs pointer-events-none flex items-center gap-1.5">
+            <ZoomIn className="w-3.5 h-3.5 text-cyan-400" />
+            <span>{Math.round((scale / 38) * 100)}%</span>
+          </div>
+        )}
 
         {/* Boundary Line equation tag */}
         {showBoundaryLine && (
