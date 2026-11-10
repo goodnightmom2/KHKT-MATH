@@ -68,13 +68,14 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
           ex.id.toLowerCase().includes(q) ||
           ex.title.toLowerCase().includes(q) ||
           ex.questionText.toLowerCase().includes(q) ||
-          ex.learningObjective.toLowerCase().includes(q);
+          ex.learningObjective.toLowerCase().includes(q) ||
+          (ex.sourceDocumentTitle && ex.sourceDocumentTitle.toLowerCase().includes(q));
         if (!match) return false;
       }
 
       return true;
     });
-  }, [selectedTopic, selectedLevel, selectedType, statusFilter, searchQuery, statusByExercise]);
+  }, [allExercises, selectedTopic, selectedLevel, selectedType, statusFilter, searchQuery, statusByExercise]);
 
   return (
     <div className="space-y-5">
@@ -83,10 +84,10 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-900">
-              Ngân hàng 40 Bài tập Chuẩn Hóa Toán 10
+              Ngân hàng {allExercises.length} Bài tập Chuẩn Hóa & Kho Tài Liệu Toán 10
             </h2>
             <p className="text-xs text-slate-500">
-              Tất cả 40 bài tập đều được kiểm chứng bằng Math Engine, phân tầng theo 4 chủ đề và 4 mức độ nhận thức
+              Bao gồm 40 bài chuẩn SGK và các câu hỏi bóc tách từ Kho Thư Viện Tài Liệu Giáo Viên, phân tầng theo 4 chủ đề và 4 mức độ nhận thức
             </p>
           </div>
 
@@ -96,7 +97,7 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Tìm mã bài (VD: C07, D08)..."
+              placeholder="Tìm mã bài, tên tài liệu..."
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-indigo-600"
             />
           </div>
@@ -113,7 +114,7 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
                 : 'bg-slate-100 text-slate-600 hover:text-slate-900'
             }`}
           >
-            Tất cả chủ đề (40)
+            Tất cả chủ đề ({allExercises.length})
           </button>
           {(['A', 'B', 'C', 'D'] as AssessmentTopicId[]).map(tId => (
             <button
@@ -126,7 +127,7 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
                   : 'bg-slate-100 text-slate-600 hover:text-slate-900'
               }`}
             >
-              {TOPIC_METADATA[tId].shortName} (10)
+              {TOPIC_METADATA[tId].shortName} ({allExercises.filter(e => e.topic === tId).length})
             </button>
           ))}
         </div>
@@ -216,6 +217,14 @@ export const ExerciseBankView: React.FC<ExerciseBankViewProps> = ({
                     <span className="font-semibold text-indigo-700">
                       {LEVEL_METADATA[ex.level].label}
                     </span>
+                    {ex.sourceDocumentTitle && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold text-[10px] truncate max-w-[180px]">
+                          {ex.sourceDocumentTitle}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {st?.completed ? (

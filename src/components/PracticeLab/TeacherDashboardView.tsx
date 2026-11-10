@@ -29,6 +29,7 @@ import {
   exportAssessmentDataJSON,
   importAssessmentDataFromFile
 } from '../../services/assessmentStorage';
+import { DocumentLibraryExamBuilder } from './DocumentLibraryExamBuilder';
 import {
   Download,
   Upload,
@@ -120,6 +121,7 @@ interface TeacherDashboardViewProps {
   onSaveAssignment: (assignment: TeacherAssignment) => void;
   onDeleteAssignment: (id: string) => void;
   onCreateCustomExercise?: (exercise: AssessmentExercise) => void;
+  onCreateCustomExercisesBatch?: (exercises: AssessmentExercise[]) => void;
   onDeleteCustomExercise?: (id: string) => void;
   onImportData: (attempts: ExerciseAttemptRecord[], assignments: TeacherAssignment[]) => void;
   onClearAttempts: () => void;
@@ -133,6 +135,7 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
   onSaveAssignment,
   onDeleteAssignment,
   onCreateCustomExercise,
+  onCreateCustomExercisesBatch,
   onDeleteCustomExercise,
   onImportData,
   onClearAttempts,
@@ -722,6 +725,27 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* SECTION 0: BACKEND DOCUMENT LIBRARY & QUESTION-TYPE MATRIX EXAM BUILDER */}
+      <DocumentLibraryExamBuilder
+        onPublishExercisesToBank={exercises => {
+          if (onCreateCustomExercisesBatch) {
+            onCreateCustomExercisesBatch(exercises);
+          } else if (onCreateCustomExercise) {
+            exercises.forEach(ex => onCreateCustomExercise(ex));
+          }
+        }}
+        onCreateAssignmentFromLibrary={(newAssignment, exercises) => {
+          if (onCreateCustomExercisesBatch) {
+            onCreateCustomExercisesBatch(exercises);
+          } else if (onCreateCustomExercise) {
+            exercises.forEach(ex => onCreateCustomExercise(ex));
+          }
+          onSaveAssignment(newAssignment);
+        }}
+        onSelectExercise={onSelectExercise}
+        onNotify={msg => setStatusBanner(msg)}
+      />
 
       {/* SECTION A: CUSTOM PROBLEM GENERATOR BY DESCRIPTION & COGNITIVE LEVEL */}
       <div className="bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/80 rounded-2xl border-2 border-indigo-200 p-4 sm:p-6 shadow-xs space-y-4">

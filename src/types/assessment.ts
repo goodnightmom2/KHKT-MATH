@@ -11,6 +11,16 @@ export type AssessmentTopicId = 'A' | 'B' | 'C' | 'D';
 
 export type CognitiveLevel = 'nhan_biet' | 'thong_hieu' | 'van_dung' | 'van_dung_cao';
 
+export type QuestionCategoryId =
+  | 'TPL_A1' // Dạng 1 (Chủ đề A): Kiểm tra điểm M(x0; y0) thuộc miền nghiệm BPT
+  | 'TPL_A2' // Dạng 2 (Chủ đề A): Nhận diện đường thẳng bờ (d) & Kiểu nét vẽ (Liền/Đứt)
+  | 'TPL_B1' // Dạng 3 (Chủ đề B): Biểu diễn miền nghiệm BPT trên mặt phẳng Oxy
+  | 'TPL_B2' // Dạng 4 (Chủ đề B): Bài toán thực tế lập BPT bậc nhất hai ẩn
+  | 'TPL_C1' // Dạng 5 (Chủ đề C): Tìm giao điểm hai đường bờ & Kiểm tra đỉnh Hệ BPT
+  | 'TPL_C2' // Dạng 6 (Chủ đề C): Phân loại miền nghiệm Hệ BPT & Đa giác nghiệm
+  | 'TPL_D1' // Dạng 7 (Chủ đề D): Tối ưu hóa Lợi nhuận LỚN NHẤT (MAX)
+  | 'TPL_D2'; // Dạng 8 (Chủ đề D): Tối ưu hóa Chi phí NHỎ NHẤT (MIN)
+
 export type ExerciseInteractionType =
   | 'multiple_choice'          // 1. Chọn đáp án đúng
   | 'enter_coordinate'         // 2. Nhập tọa độ điểm
@@ -91,6 +101,9 @@ export interface AssessmentExercise {
   learningObjective: string; // Yêu cầu cần đạt
   questionText: string;
   contextStory?: string;
+  sourceDocumentId?: string;
+  sourceDocumentTitle?: string;
+  templateId?: QuestionCategoryId;
 
   // Dữ liệu Toán học phục vụ Math Engine & Graph Engine
   mathData: {
@@ -179,3 +192,25 @@ export interface PersonalizedRecommendation {
   relatedErrorCode?: ErrorCodeId;
   priority: number;
 }
+
+export interface LibraryDocument {
+  id: string;
+  title: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt: number;
+  topic: AssessmentTopicId | 'ALL';
+  description: string;
+  rawContent: string;
+  extractedExercises: AssessmentExercise[];
+  questionTypeCounts: Partial<Record<QuestionCategoryId, number>>;
+}
+
+export interface ExamTypeSlotConfig {
+  templateId: QuestionCategoryId;
+  enabled: boolean;
+  count: number;
+  preferredLevel: 'ALL' | CognitiveLevel;
+}
+

@@ -7,6 +7,7 @@ import {
   ErrorCodeId
 } from '../types/assessment';
 import { ASSESSMENT_EXERCISE_BANK } from '../data/assessmentBank';
+import { buildSupabaseHeaders, getCloudDbConfig } from './documentLibraryService';
 
 const DB_NAME = 'optimath_assessment_db';
 const DB_VERSION = 1;
@@ -28,6 +29,59 @@ export function loadCustomExercises(): AssessmentExercise[] {
   }
 }
 
+export async function fetchCustomExercisesFromBackend(): Promise<AssessmentExercise[]> {
+  const cloud = getCloudDbConfig();
+  if (cloud.supabaseUrl && cloud.supabaseAnonKey) {
+    try {
+      const sbRes = await fetch(
+        `${cloud.supabaseUrl}/rest/v1/optimath_exercises?select=*`,
+        {
+          method: 'GET',
+          headers: buildSupabaseHeaders(cloud.supabaseAnonKey)
+        }
+      );
+      if (sbRes.ok) {
+        const rows = await sbRes.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          const sbExercises = rows
+            .map((r: any) => r.exercise_data as AssessmentExercise)
+            .filter(Boolean);
+          const local = loadCustomExercises();
+          const mergedMap = new Map<string, AssessmentExercise>();
+          for (const ex of [...sbExercises, ...local]) {
+            if (ex && ex.id) mergedMap.set(ex.id, ex);
+          }
+          const merged = Array.from(mergedMap.values());
+          localStorage.setItem(LS_CUSTOM_EXERCISES_KEY, JSON.stringify(merged));
+          return merged;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  try {
+    const res = await fetch('/api/exercises', { method: 'GET' });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.exercises)) {
+        const local = loadCustomExercises();
+        const mergedMap = new Map<string, AssessmentExercise>();
+        for (const ex of [...data.exercises, ...local]) {
+          mergedMap.set(ex.id, ex);
+        }
+        const merged = Array.from(mergedMap.values());
+        localStorage.setItem(LS_CUSTOM_EXERCISES_KEY, JSON.stringify(merged));
+        return merged;
+      }
+    }
+  } catch {
+    // Offline fallback
+  }
+  return loadCustomExercises();
+}
+
 export function saveCustomExercise(exercise: AssessmentExercise): AssessmentExercise[] {
   const existing = loadCustomExercises();
   const updated = [exercise, ...existing.filter(e => e.id !== exercise.id)];
@@ -36,6 +90,76 @@ export function saveCustomExercise(exercise: AssessmentExercise): AssessmentExer
   } catch {
     // Ignore storage quota errors
   }
+
+  const cloud = getCloudDbConfig();
+  if (cloud.supabaseUrl && cloud.supabaseAnonKey) {
+    fetch(`${cloud.supabaseUrl}/rest/v1/optimath_exercises`, {
+      method: 'POST',
+      headers: buildSupabaseHeaders(cloud.supabaseAnonKey, {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates'
+      }),
+      body: JSON.stringify({
+        id: exercise.id,
+        topic: exercise.topic,
+        level: exercise.level,
+        template_id: exercise.templateId || null,
+        source_document_id: exercise.sourceDocumentId || null,
+        source_document_title: exercise.sourceDocumentTitle || null,
+        title: exercise.title,
+        question_text: exercise.questionText,
+        exercise_data: exercise
+      })
+    }).catch(() => {});
+  }
+
+  fetch('/api/exercises', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exercises: [exercise] })
+  }).catch(() => {});
+  return updated;
+}
+
+export function saveCustomExercisesBatch(exercises: AssessmentExercise[]): AssessmentExercise[] {
+  const existing = loadCustomExercises();
+  const incomingIds = new Set(exercises.map(e => e.id));
+  const updated = [...exercises, ...existing.filter(e => !incomingIds.has(e.id))];
+  try {
+    localStorage.setItem(LS_CUSTOM_EXERCISES_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore storage quota errors
+  }
+
+  const cloud = getCloudDbConfig();
+  if (cloud.supabaseUrl && cloud.supabaseAnonKey && exercises.length > 0) {
+    fetch(`${cloud.supabaseUrl}/rest/v1/optimath_exercises`, {
+      method: 'POST',
+      headers: buildSupabaseHeaders(cloud.supabaseAnonKey, {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates'
+      }),
+      body: JSON.stringify(
+        exercises.map(ex => ({
+          id: ex.id,
+          topic: ex.topic,
+          level: ex.level,
+          template_id: ex.templateId || null,
+          source_document_id: ex.sourceDocumentId || null,
+          source_document_title: ex.sourceDocumentTitle || null,
+          title: ex.title,
+          question_text: ex.questionText,
+          exercise_data: ex
+        }))
+      )
+    }).catch(() => {});
+  }
+
+  fetch('/api/exercises', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exercises })
+  }).catch(() => {});
   return updated;
 }
 
@@ -47,6 +171,21 @@ export function deleteCustomExercise(exerciseId: string): AssessmentExercise[] {
   } catch {
     // Ignore
   }
+
+  const cloud = getCloudDbConfig();
+  if (cloud.supabaseUrl && cloud.supabaseAnonKey) {
+    fetch(
+      `${cloud.supabaseUrl}/rest/v1/optimath_exercises?id=eq.${encodeURIComponent(exerciseId)}`,
+      {
+        method: 'DELETE',
+        headers: buildSupabaseHeaders(cloud.supabaseAnonKey)
+      }
+    ).catch(() => {});
+  }
+
+  fetch(`/api/exercises/${encodeURIComponent(exerciseId)}`, {
+    method: 'DELETE'
+  }).catch(() => {});
   return updated;
 }
 
@@ -138,6 +277,11 @@ export async function saveAttemptRecord(record: ExerciseAttemptRecord): Promise<
   } catch {
     // Fallback already saved in localStorage
   }
+  fetch('/api/attempts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attempt: record })
+  }).catch(() => {});
   return updated;
 }
 
@@ -206,6 +350,11 @@ export async function saveTeacherAssignment(assignment: TeacherAssignment): Prom
   } catch {
     // Ignore
   }
+  fetch('/api/assignments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ assignment })
+  }).catch(() => {});
   return merged;
 }
 
@@ -228,6 +377,9 @@ export async function deleteTeacherAssignment(assignmentId: string): Promise<Tea
   } catch {
     // Ignore
   }
+  fetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+    method: 'DELETE'
+  }).catch(() => {});
   return filtered;
 }
 

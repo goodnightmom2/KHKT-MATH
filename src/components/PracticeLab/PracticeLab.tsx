@@ -15,9 +15,12 @@ import {
   deleteTeacherAssignment,
   clearAllAttempts,
   loadCustomExercises,
+  fetchCustomExercisesFromBackend,
   saveCustomExercise,
+  saveCustomExercisesBatch,
   deleteCustomExercise
 } from '../../services/assessmentStorage';
+import { fetchLibraryDocuments } from '../../services/documentLibraryService';
 import { InteractiveExercisePlayer } from './InteractiveExercisePlayer';
 import { ExerciseBankView } from './ExerciseBankView';
 import { ErrorAnalysisView } from './ErrorAnalysisView';
@@ -80,14 +83,23 @@ export const PracticeLab: React.FC<PracticeLabProps> = ({
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([loadAllAttempts(), loadAllAssignments()]).then(
-      ([loadedAttempts, loadedAssignments]) => {
-        if (!mounted) return;
-        setAttempts(loadedAttempts);
-        setAssignments(loadedAssignments);
-        setIsLoading(false);
-      }
-    );
+    Promise.all([
+      loadAllAttempts(),
+      loadAllAssignments(),
+      fetchCustomExercisesFromBackend(),
+      fetchLibraryDocuments()
+    ]).then(([loadedAttempts, loadedAssignments, backendExercises, libraryDocs]) => {
+      if (!mounted) return;
+      setAttempts(loadedAttempts);
+      setAssignments(loadedAssignments);
+      const docExercises = libraryDocs.flatMap(d => d.extractedExercises);
+      const mergedCustom = saveCustomExercisesBatch([
+        ...backendExercises,
+        ...docExercises
+      ]);
+      setCustomExercises(mergedCustom);
+      setIsLoading(false);
+    });
     return () => {
       mounted = false;
     };
@@ -158,6 +170,11 @@ export const PracticeLab: React.FC<PracticeLabProps> = ({
 
   const handleCreateCustomExercise = (ex: AssessmentExercise) => {
     const updated = saveCustomExercise(ex);
+    setCustomExercises(updated);
+  };
+
+  const handleCreateCustomExercisesBatch = (exercises: AssessmentExercise[]) => {
+    const updated = saveCustomExercisesBatch(exercises);
     setCustomExercises(updated);
   };
 
@@ -419,6 +436,7 @@ export const PracticeLab: React.FC<PracticeLabProps> = ({
             onSaveAssignment={handleSaveAssignment}
             onDeleteAssignment={handleDeleteAssignment}
             onCreateCustomExercise={handleCreateCustomExercise}
+            onCreateCustomExercisesBatch={handleCreateCustomExercisesBatch}
             onDeleteCustomExercise={handleDeleteCustomExercise}
             onImportData={handleImportData}
             onClearAttempts={handleClearAttempts}
