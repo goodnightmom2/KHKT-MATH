@@ -16,19 +16,19 @@ export const TeacherGuideModal: React.FC<TeacherGuideModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-200 flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-purple-200 flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold shrink-0">
               <Presentation className="w-5 h-5" />
             </div>
-            <div>
-              <span className="text-xs font-bold text-purple-600 uppercase tracking-wider">
+            <div className="min-w-0">
+              <span className="text-[11px] sm:text-xs font-bold text-purple-600 uppercase tracking-wider block">
                 Chế độ Dành Cho Thầy Cô
               </span>
-              <h3 className="text-lg font-bold text-slate-900">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
                 Hướng Dẫn Sư Phạm & Trình Chiếu Lớp Học
               </h3>
             </div>
@@ -36,7 +36,8 @@ export const TeacherGuideModal: React.FC<TeacherGuideModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition shrink-0 -mr-1 mt-0.5"
+            aria-label="Đóng"
           >
             <X className="w-5 h-5" />
           </button>

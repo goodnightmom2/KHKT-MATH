@@ -19,25 +19,26 @@ export const UnderDevModal: React.FC<UnderDevModalProps> = ({
   if (!isOpen || !module) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold shrink-0">
               <Construction className="w-5 h-5" />
             </div>
-            <div>
-              <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
+            <div className="min-w-0">
+              <span className="text-[11px] sm:text-xs font-bold text-amber-600 uppercase tracking-wider block">
                 Module 0{module.number} – Đang phát triển
               </span>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900">{module.title}</h3>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{module.title}</h3>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition shrink-0 -mr-1 mt-0.5"
+            aria-label="Đóng"
           >
             <X className="w-5 h-5" />
           </button>
